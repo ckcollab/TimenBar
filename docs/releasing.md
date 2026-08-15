@@ -4,17 +4,17 @@ Public releases require a Developer ID Application identity, hardened runtime, a
 
 ## Local GitHub releases
 
-Use the guarded local release script after configuring a `notarytool` Keychain profile named `TimenBar-Notary`:
+Copy the environment template, add your Apple ID and team ID locally, then create the `notarytool` Keychain profile:
 
 ```sh
-xcrun notarytool store-credentials TimenBar-Notary \
-  --apple-id "YOUR_APPLE_ID" \
-  --team-id MMJZRMH2BA
+cp .env_sample .env
+# Fill in TIMENBAR_APPLE_ID and TIMENBAR_TEAM_ID in .env, then:
+scripts/configure-notarization.sh
 
 scripts/release.sh 0.2.0
 ```
 
-`notarytool` securely prompts for the app-specific password instead of putting it in the command or shell history.
+`.env` is git-ignored and is read by the notarization setup and release scripts. `notarytool` securely prompts for the app-specific password instead of putting it in `.env`, the command, or shell history.
 
 The script requires a clean branch matching `origin`, confirms that the tag is new, increments the Xcode build number, updates the marketing version, runs the TimenBar unit tests, creates a universal archive, exports it with Developer ID signing, notarizes and staples the app, packages a ZIP and checksum, commits the version changes, creates an annotated tag, pushes the commit and tag atomically, and publishes a GitHub Release with generated notes.
 

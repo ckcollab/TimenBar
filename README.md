@@ -33,13 +33,12 @@ One-time setup on a release Mac:
 ```sh
 brew install gh
 gh auth login --web --git-protocol ssh
-
-xcrun notarytool store-credentials TimenBar-Notary \
-  --apple-id "YOUR_APPLE_ID" \
-  --team-id MMJZRMH2BA
+cp .env_sample .env
+# Fill in TIMENBAR_APPLE_ID and TIMENBAR_TEAM_ID in .env, then:
+scripts/configure-notarization.sh
 ```
 
-`notarytool` will securely prompt for your app-specific password. Do not put that password in the repository or the command itself.
+The local `.env` file is git-ignored. `notarytool` will securely prompt for your app-specific password; do not put that password in `.env`, the repository, or the command itself.
 
 For each release, start from a clean, up-to-date branch and pass the new version number to the release script:
 

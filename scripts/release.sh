@@ -6,7 +6,17 @@ project_file="$root_dir/TimenBar.xcodeproj/project.pbxproj"
 generator_file="$root_dir/scripts/generate_project.rb"
 scheme="TimenBar"
 remote="origin"
+env_file="${TIMENBAR_ENV_FILE:-$root_dir/.env}"
+
+if [[ -f "$env_file" ]]; then
+  # Load local release identifiers. Never store an app-specific password here.
+  set -a
+  source "$env_file"
+  set +a
+fi
+
 default_notary_profile="${TIMENBAR_NOTARY_PROFILE:-TimenBar-Notary}"
+configured_team_id="${TIMENBAR_TEAM_ID:-}"
 
 usage() {
   cat <<'EOF'
@@ -187,6 +197,9 @@ team_id="$(
   sed -n 's/^[[:space:]]*DEVELOPMENT_TEAM = \([^;]*\);/\1/p' "$project_file" | sort -u
 )"
 [[ "$team_id" =~ '^[A-Z0-9]{10}$' ]] || die "the Xcode project must contain one development team ID"
+if [[ -n "$configured_team_id" && "$configured_team_id" != "$team_id" ]]; then
+  die "TIMENBAR_TEAM_ID in $env_file does not match the team configured in the Xcode project"
+fi
 
 security find-identity -v -p codesigning | \
   rg -q '"Developer ID Application: .+ \('"$team_id"'\)"' || \
