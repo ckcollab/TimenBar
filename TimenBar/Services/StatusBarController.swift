@@ -9,7 +9,9 @@ import SwiftUI
 final class StatusBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
+    private let container: ModelContainer
     private weak var appModel: AppModel?
+    private var settingsWindowController: NSWindowController?
     private let actionButton = StatusSegmentButton(frame: .zero)
     private let durationButton = StatusSegmentButton(frame: .zero)
     private let durationLabel = StatusDurationLabel(labelWithString: "0:00")
@@ -19,11 +21,14 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     init(appModel: AppModel, container: ModelContainer) {
         self.appModel = appModel
+        self.container = container
         statusItem = NSStatusBar.system.statusItem(withLength: 112)
         super.init()
 
         configureStatusItem()
-        let panel = MenuBarPanel()
+        let panel = MenuBarPanel(showSettings: { [weak self] in
+            self?.showSettings()
+        })
             .environment(appModel)
             .modelContainer(container)
         popover.contentViewController = NSHostingController(rootView: panel)
@@ -116,6 +121,30 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private func showPanel() {
         guard let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    private func showSettings() {
+        guard let appModel else { return }
+        if settingsWindowController == nil {
+            let settings = SettingsView()
+                .environment(appModel)
+                .modelContainer(container)
+            let hostingController = NSHostingController(rootView: settings)
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "TimenBar Settings"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.setContentSize(NSSize(width: 620, height: 460))
+            window.contentMinSize = NSSize(width: 560, height: 400)
+            window.setFrameAutosaveName("TimenBarSettingsWindow")
+            window.center()
+            settingsWindowController = NSWindowController(window: window)
+        }
+
+        popover.performClose(nil)
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func observeModel() {

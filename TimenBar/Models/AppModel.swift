@@ -124,6 +124,10 @@ final class AppModel {
         (try? store.pendingMutations().count) ?? 0
     }
 
+    var favoriteProjectIDs: Set<String> {
+        Set(favorites.compactMap(\.projectID))
+    }
+
     var selectedDayEntries: [TimeEntry] {
         let interval = dayInterval(containing: selectedDate)
         var visible = entries.filter { interval.contains($0.start) }
@@ -269,7 +273,7 @@ final class AppModel {
     func presentRestart(_ entry: TimeEntry) {
         composerMode = .restart(
             entry,
-            TimerDraft(projectID: entry.projectID, tagIDs: entry.tags.map(\.id), note: entry.note, billable: entry.billable)
+            TimerDraft(projectID: entry.projectID, tagIDs: entry.tags.map(\.id), note: entry.note, billable: true)
         )
     }
 
@@ -293,7 +297,7 @@ final class AppModel {
             projectID: entry.projectID,
             tagIDs: entry.tags.map(\.id),
             note: entry.note,
-            billable: entry.billable
+            billable: true
         )
         let startedAt = Date.now
         focus(on: remoteID)
@@ -307,7 +311,7 @@ final class AppModel {
             clientName: entry.clientName,
             note: entry.note,
             tags: entry.tags,
-            billable: entry.billable,
+            billable: true,
             syncState: .synced
         )
         lastTimerDraft = draft
@@ -324,6 +328,7 @@ final class AppModel {
     }
 
     func startTimer(_ draft: TimerDraft, source: String = "composer") async {
+        let draft = draft.enforcingBillable
         actionLogger.debug("start-timer source=\(source, privacy: .public) project=\(draft.projectID ?? "unassigned", privacy: .public)")
         guard authenticationState == .signedIn, connectivity.isOnline else {
             errorMessage = "TimenBar must be online and connected to start a timer."
@@ -378,7 +383,7 @@ final class AppModel {
         }
         idlePrompt = nil
         idleMonitor.stop()
-        let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: timer.billable)
+        let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: true)
         do {
             if let resumedEntryID,
                let original = entries.first(where: { $0.remoteID == resumedEntryID })
@@ -431,6 +436,7 @@ final class AppModel {
     }
 
     func updateRunningTimer(_ draft: TimerDraft) {
+        let draft = draft.enforcingBillable
         guard connectivity.isOnline else {
             errorMessage = "TimenBar must be online to edit a running timer."
             return
@@ -451,6 +457,7 @@ final class AppModel {
     func trackingSettingsChanged() { configureIdleMonitor() }
 
     func updateEntry(_ entry: TimeEntry, draft: TimerDraft, start: Date?, end: Date?) async {
+        let draft = draft.enforcingBillable
         guard authenticationState == .signedIn, connectivity.isOnline else {
             errorMessage = "TimenBar must be online and connected to edit entries."
             return
@@ -492,19 +499,20 @@ final class AppModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func toggleFavorite(draft: TimerDraft) {
-        if let existing = favorites.first(where: { favoriteMatches($0, draft: draft) }) {
-            favorites.removeAll { $0.id == existing.id }
-            try? store.deleteFavorite(id: existing.id)
+    func toggleFavorite(projectID: String?) {
+        guard let projectID, let project = projects.first(where: { $0.id == projectID }) else { return }
+        let existing = favorites.filter { $0.projectID == projectID }
+        if !existing.isEmpty {
+            favorites.removeAll { $0.projectID == projectID }
+            existing.forEach { try? store.deleteFavorite(id: $0.id) }
         } else {
-            let projectName = projects.first { $0.id == draft.projectID }?.name ?? "Unassigned"
             let favorite = Favorite(
                 id: UUID(),
-                name: draft.note.isEmpty ? projectName : draft.note,
-                projectID: draft.projectID,
-                tagIDs: draft.tagIDs,
-                note: draft.note,
-                billable: draft.billable,
+                name: project.name,
+                projectID: projectID,
+                tagIDs: [],
+                note: "",
+                billable: true,
                 sortOrder: favorites.count
             )
             favorites.append(favorite)
@@ -512,10 +520,13 @@ final class AppModel {
         }
     }
 
-    func isFavorite(_ draft: TimerDraft) -> Bool { favorites.contains { favoriteMatches($0, draft: draft) } }
+    func isFavorite(projectID: String?) -> Bool {
+        guard let projectID else { return false }
+        return favorites.contains { $0.projectID == projectID }
+    }
 
     func startFavorite(_ favorite: Favorite) async {
-        let draft = TimerDraft(projectID: favorite.projectID, tagIDs: favorite.tagIDs, note: favorite.note, billable: favorite.billable)
+        let draft = TimerDraft(projectID: favorite.projectID, tagIDs: [], note: "", billable: true)
         await startTimer(draft, source: "favorite")
     }
 
@@ -719,10 +730,6 @@ final class AppModel {
                 return try await !gateway.entries(from: interval.start, to: interval.end).contains { $0.remoteID == payload.entryID }
             }
         } catch { return false }
-    }
-
-    private func favoriteMatches(_ favorite: Favorite, draft: TimerDraft) -> Bool {
-        favorite.projectID == draft.projectID && Set(favorite.tagIDs) == Set(draft.tagIDs) && favorite.note == draft.note && favorite.billable == draft.billable
     }
 
     private func mergePending(remote: [TimeEntry]) -> [TimeEntry] {

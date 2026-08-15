@@ -3,6 +3,44 @@ import XCTest
 @testable import TimenBar
 
 final class CoreBehaviorTests: XCTestCase {
+    func testTimerDraftsEnforceBillableMutations() {
+        XCTAssertTrue(TimerDraft.empty.billable)
+
+        let legacyDraft = TimerDraft(projectID: "project", tagIDs: ["tag"], note: "Legacy", billable: false)
+        let normalized = legacyDraft.enforcingBillable
+        XCTAssertTrue(normalized.billable)
+        XCTAssertEqual(normalized.projectID, legacyDraft.projectID)
+        XCTAssertEqual(normalized.tagIDs, legacyDraft.tagIDs)
+        XCTAssertEqual(normalized.note, legacyDraft.note)
+    }
+
+    func testChangingEntryDatePreservesStartTimeAndDuration() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 14, hour: 9, minute: 30
+        )))
+        let end = start.addingTimeInterval(5_400)
+        let selectedDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 18
+        )))
+
+        let shifted = TimerDateChange.shifting(
+            start: start,
+            end: end,
+            to: selectedDate,
+            calendar: calendar
+        )
+
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: shifted.start)
+        XCTAssertEqual(components.year, 2026)
+        XCTAssertEqual(components.month, 8)
+        XCTAssertEqual(components.day, 20)
+        XCTAssertEqual(components.hour, 9)
+        XCTAssertEqual(components.minute, 30)
+        XCTAssertEqual(shifted.end.timeIntervalSince(shifted.start), 5_400, accuracy: 0.001)
+    }
+
     func testPKCEChallengeUsesRFC7636Base64URL() {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         XCTAssertEqual(OAuthSecurity.challenge(for: verifier), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")

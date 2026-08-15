@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarPanel: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.openWindow) private var openWindow
+    let showSettings: () -> Void
 
     var body: some View {
         @Bindable var model = appModel
@@ -87,12 +88,6 @@ struct MenuBarPanel: View {
 
             Divider()
 
-            if !appModel.favorites.isEmpty {
-                FavoritesStrip()
-                    .environment(appModel)
-                Divider()
-            }
-
             if appModel.selectedDayEntries.isEmpty {
                 ContentUnavailableView(
                     "No time for this day",
@@ -138,10 +133,37 @@ struct MenuBarPanel: View {
                 .buttonStyle(.plain)
             }
 
-            SettingsLink {
-                Label("Settings", systemImage: "gearshape")
+            Menu {
+                Button {
+                    showSettings()
+                } label: {
+                    Label("Settings…", systemImage: "gearshape")
+                }
+
+                Divider()
+
+                Button {
+                    Task { await appModel.signOut() }
+                } label: {
+                    Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+                .disabled(appModel.authenticationState != .signedIn)
+
+                Divider()
+
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    Label("Quit TimenBar", systemImage: "power")
+                }
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 24, height: 24)
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("TimenBar menu")
+            .accessibilityLabel("TimenBar menu")
         }
         .padding(.horizontal, 16)
         .frame(height: 52)

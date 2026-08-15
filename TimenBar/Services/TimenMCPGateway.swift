@@ -300,7 +300,7 @@ actor TimenMCPGateway: TimenGateway {
     private func draftSemanticArguments(_ draft: TimerDraft) -> [SemanticArgument] {
         var values: [SemanticArgument] = [
             SemanticArgument(names: ["note", "description"], value: .string(draft.note)),
-            SemanticArgument(names: ["billable", "is_billable"], value: .bool(draft.billable)),
+            SemanticArgument(names: ["billable", "is_billable"], value: .bool(true)),
             SemanticArgument(names: ["tag_ids", "tagIds"], value: .array(draft.tagIDs.map(Self.identifierValue))),
             SemanticArgument(
                 names: ["tags"],

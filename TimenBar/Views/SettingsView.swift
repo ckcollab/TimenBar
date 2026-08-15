@@ -9,79 +9,236 @@ struct SettingsView: View {
         @Bindable var settings = appModel.settings
 
         TabView {
-            Form {
-                Section("Account") {
+            settingsPage {
+                SettingsCard(title: "Account", systemImage: "person.crop.circle") {
                     if let account = appModel.account {
-                        LabeledContent("Name", value: account.name)
-                        LabeledContent("Team", value: account.teamName)
-                        LabeledContent("Time zone", value: account.timeZoneIdentifier)
-                        Button("Disconnect Timen", role: .destructive) { Task { await appModel.signOut() } }
+                        VStack(alignment: .leading, spacing: 10) {
+                            SettingsValueRow(label: "Name", value: account.name)
+                            SettingsValueRow(label: "Team", value: account.teamName)
+                            SettingsValueRow(label: "Time zone", value: account.timeZoneIdentifier)
+                            Divider()
+                            Button("Disconnect Timen", role: .destructive) {
+                                Task { await appModel.signOut() }
+                            }
+                        }
                     } else {
-                        Text("Not connected to Timen").foregroundStyle(.secondary)
+                        Label("Not connected to Timen", systemImage: "person.crop.circle.badge.xmark")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Section("Startup") {
-                    Toggle("Start TimenBar at login", isOn: Binding(
-                        get: { settings.startAtLoginEnabled },
-                        set: { settings.setStartAtLogin($0) }
-                    ))
-                    if let error = settings.startAtLoginError { Text(error).font(.caption).foregroundStyle(.red) }
+
+                SettingsCard(title: "Startup", systemImage: "power") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Start on login", isOn: Binding(
+                            get: { settings.startAtLoginEnabled },
+                            set: { settings.setStartAtLogin($0) }
+                        ))
+                        .toggleStyle(.checkbox)
+                        Text("Open TimenBar automatically when you sign in to your Mac.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let error = settings.startAtLoginError {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
             }
-            .padding(20)
             .tabItem { Label("General", systemImage: "gear") }
 
-            Form {
-                Toggle("Detect inactivity while a timer runs", isOn: $settings.idleDetectionEnabled)
-                Stepper("Prompt after \(settings.idleThresholdMinutes) minutes", value: $settings.idleThresholdMinutes, in: 5 ... 60, step: 5)
-                    .disabled(!settings.idleDetectionEnabled)
-                Toggle("Show idle notifications", isOn: $settings.notificationsEnabled)
-                Toggle("Show elapsed time in the menu bar", isOn: $settings.showElapsedInMenuBar)
+            settingsPage {
+                SettingsCard(title: "Timer", systemImage: "stopwatch") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Show elapsed time in the menu bar", isOn: $settings.showElapsedInMenuBar)
+                            .toggleStyle(.checkbox)
+                        Divider()
+                        Toggle("Detect inactivity while a timer runs", isOn: $settings.idleDetectionEnabled)
+                            .toggleStyle(.checkbox)
+                        Stepper(
+                            "Prompt after \(settings.idleThresholdMinutes) minutes",
+                            value: $settings.idleThresholdMinutes,
+                            in: 5 ... 60,
+                            step: 5
+                        )
+                        .disabled(!settings.idleDetectionEnabled)
+                        Toggle("Show idle notifications", isOn: $settings.notificationsEnabled)
+                            .toggleStyle(.checkbox)
+                            .disabled(!settings.idleDetectionEnabled)
+                    }
+                }
             }
-            .padding(20)
             .tabItem { Label("Tracking", systemImage: "stopwatch") }
 
-            Form {
-                LabeledContent("Connection", value: appModel.connectivity.isOnline ? "Online" : "Offline")
-                LabeledContent("Queued actions", value: "\(appModel.pendingCount)")
-                LabeledContent("Conflicts", value: "\(appModel.conflicts.count)")
-                HStack {
-                    Button("Sync Now") { Task { await appModel.syncNow() } }
-                        .disabled(!appModel.connectivity.isOnline || appModel.authenticationState != .signedIn)
-                    Button("Review Conflicts") {
-                        openWindow(id: "conflicts")
-                        NSApp.activate(ignoringOtherApps: true)
+            settingsPage {
+                SettingsCard(title: "Sync status", systemImage: "arrow.triangle.2.circlepath") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 10) {
+                            SettingsMetric(
+                                label: "Connection",
+                                value: appModel.connectivity.isOnline ? "Online" : "Offline",
+                                systemImage: appModel.connectivity.isOnline ? "wifi" : "wifi.slash"
+                            )
+                            SettingsMetric(
+                                label: "Queued",
+                                value: "\(appModel.pendingCount)",
+                                systemImage: "clock.arrow.circlepath"
+                            )
+                            SettingsMetric(
+                                label: "Conflicts",
+                                value: "\(appModel.conflicts.count)",
+                                systemImage: "exclamationmark.triangle"
+                            )
+                        }
+                        Divider()
+                        HStack(spacing: 10) {
+                            Button("Sync Now") { Task { await appModel.syncNow() } }
+                                .disabled(
+                                    !appModel.connectivity.isOnline ||
+                                        appModel.authenticationState != .signedIn
+                                )
+                            Button("Review Conflicts") {
+                                openWindow(id: "conflicts")
+                                NSApp.activate(ignoringOtherApps: true)
+                            }
+                            .disabled(appModel.conflicts.isEmpty)
+                        }
                     }
-                    .disabled(appModel.conflicts.isEmpty)
                 }
             }
-            .padding(20)
             .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
 
-            Form {
-                Toggle("Automatically check for updates", isOn: $settings.automaticUpdatesEnabled)
-                    .disabled(!appModel.updater.isConfigured)
-                Button("Check for Updates…") { appModel.updater.checkForUpdates() }
-                    .disabled(!appModel.updater.isConfigured)
-                if !appModel.updater.isConfigured {
-                    Text("Set SUPublicEDKey and the appcast URL for signed public builds.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            settingsPage {
+                SettingsCard(title: "Updates", systemImage: "arrow.down.circle") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Automatically check for updates", isOn: $settings.automaticUpdatesEnabled)
+                            .toggleStyle(.checkbox)
+                            .disabled(!appModel.updater.isConfigured)
+                        Button("Check for Updates…") { appModel.updater.checkForUpdates() }
+                            .disabled(!appModel.updater.isConfigured)
+                        if !appModel.updater.isConfigured {
+                            Text("Update checks are unavailable in this build.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                Section("About") {
-                    Text("TimenBar is an unofficial, open-source client and is not affiliated with Timen.")
-                    Link("TimenBar source code", destination: URL(string: "https://github.com/timenbar/timenbar")!)
-                    Text("MIT License")
+
+                SettingsCard(title: "About TimenBar", systemImage: "info.circle") {
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: "timer.circle.fill")
+                            .font(.system(size: 38))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(TimenBarTheme.accent)
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("TimenBar")
+                                .font(.title3.weight(.semibold))
+                            Text("An unofficial, open-source Timen client for macOS.")
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 4) {
+                                Text("Made by Eric Carmichael at Ckc —")
+                                Link("ckcollab.com", destination: URL(string: "https://ckcollab.com")!)
+                            }
+
+                            HStack(spacing: 14) {
+                                Link(
+                                    "Source code",
+                                    destination: URL(string: "https://github.com/timenbar/timenbar")!
+                                )
+                                Text("MIT License")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.callout)
+                        }
+                    }
                 }
             }
-            .padding(20)
             .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 580, height: 420)
+        .frame(minWidth: 560, idealWidth: 620, minHeight: 400, idealHeight: 460)
         .onChange(of: settings.idleDetectionEnabled) { _, _ in appModel.trackingSettingsChanged() }
         .onChange(of: settings.idleThresholdMinutes) { _, _ in appModel.trackingSettingsChanged() }
         .onChange(of: settings.automaticUpdatesEnabled) { _, enabled in
             if appModel.updater.isConfigured { appModel.updater.automaticallyChecksForUpdates = enabled }
         }
+    }
+
+    private func settingsPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+        }
+        .background(TimenBarTheme.panel)
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let content: Content
+
+    init(title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            Divider()
+            content
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .timenCard()
+    }
+}
+
+private struct SettingsValueRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: 76, alignment: .leading)
+            Text(value)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct SettingsMetric: View {
+    let label: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.body.weight(.medium))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
 }

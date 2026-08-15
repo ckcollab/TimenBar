@@ -9,42 +9,34 @@ struct EntryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            syncIndicator
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text(entry.clientName ?? "Timen")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    if entry.billable {
-                        Image(systemName: "dollarsign.circle.fill")
+            HStack(spacing: 12) {
+                syncIndicator
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.projectName ?? "Unassigned")
+                        .font(.headline)
+                        .lineLimit(1)
+                    if !entry.note.isEmpty {
+                        Text(entry.note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if !entry.tags.isEmpty {
+                        Text(entry.tags.map(\.name).joined(separator: " · "))
                             .font(.caption2)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                 }
-                Text(entry.projectName ?? "Unassigned")
-                    .font(.headline)
-                    .lineLimit(1)
-                if !entry.note.isEmpty {
-                    Text(entry.note)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                if !entry.tags.isEmpty {
-                    Text(entry.tags.map(\.name).joined(separator: " · "))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                Spacer()
+                Text(appModel.displayDuration(for: entry).timerText)
+                    .font(.title3.monospacedDigit())
             }
             .contentShape(Rectangle())
-            .onTapGesture {
+            .onTapGesture(count: 2) {
                 if isRunning { appModel.presentRunningTimer() }
                 else { appModel.presentEdit(entry) }
             }
-            Spacer()
-            Text(appModel.displayDuration(for: entry).timerText)
-                .font(.title3.monospacedDigit())
             Button {
                 Task {
                     if isRunning { await appModel.stopTimer(source: "entry-row-pause") }

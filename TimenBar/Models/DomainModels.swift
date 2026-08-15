@@ -88,7 +88,32 @@ struct TimerDraft: Codable, Hashable, Sendable {
     var note: String
     var billable: Bool
 
-    static let empty = TimerDraft(projectID: nil, tagIDs: [], note: "", billable: false)
+    static let empty = TimerDraft(projectID: nil, tagIDs: [], note: "", billable: true)
+
+    var enforcingBillable: TimerDraft {
+        var copy = self
+        copy.billable = true
+        return copy
+    }
+}
+
+enum TimerDateChange {
+    static func shifting(
+        start: Date,
+        end: Date,
+        to selectedDate: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date) {
+        var components = calendar.dateComponents([.year, .month, .day], from: selectedDate)
+        let time = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: start)
+        components.hour = time.hour
+        components.minute = time.minute
+        components.second = time.second
+        components.nanosecond = time.nanosecond
+
+        guard let shiftedStart = calendar.date(from: components) else { return (start, end) }
+        return (shiftedStart, shiftedStart.addingTimeInterval(end.timeIntervalSince(start)))
+    }
 }
 
 struct Favorite: Codable, Hashable, Identifiable, Sendable {
