@@ -47,6 +47,18 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertNotNil(policy.observe(idleSeconds: 301, now: .now))
     }
 
+    func testIdleBeforeTimerStartDoesNotImmediatelyPrompt() {
+        let timerStart = Date(timeIntervalSince1970: 10_000)
+        var policy = IdlePromptPolicy(threshold: 600, notBefore: timerStart)
+
+        XCTAssertNil(policy.observe(idleSeconds: 3_600, now: timerStart))
+        XCTAssertNil(policy.observe(idleSeconds: 4_199, now: timerStart.addingTimeInterval(599)))
+        XCTAssertEqual(
+            policy.observe(idleSeconds: 4_200, now: timerStart.addingTimeInterval(600)),
+            timerStart
+        )
+    }
+
     func testDurationAcrossDaylightSavingBoundaryUsesAbsoluteTime() throws {
         let formatter = ISO8601DateFormatter()
         let start = try XCTUnwrap(formatter.date(from: "2026-03-08T01:30:00-08:00"))
@@ -56,5 +68,29 @@ final class CoreBehaviorTests: XCTestCase {
             projectName: nil, clientName: nil, note: "", tags: [], billable: false, syncState: .synced
         )
         XCTAssertEqual(entry.duration, 3_600)
+    }
+
+    func testTimenClockDurations() {
+        XCTAssertEqual(TimenDurationParser.parseClock("4:25:48"), 15_948)
+        XCTAssertEqual(TimenDurationParser.parseClock("0:30:00"), 1_800)
+        XCTAssertEqual(TimenDurationParser.parseClock("4:26"), 15_960)
+    }
+
+    func testEntryDisplayOrderUsesCreationIDNotUpdatedDuration() {
+        let sharedStart = Date(timeIntervalSince1970: 10_000)
+        let older = TimeEntry(
+            id: "100", remoteID: "100", start: sharedStart, end: sharedStart.addingTimeInterval(60),
+            projectID: nil, projectName: nil, clientName: nil, note: "Older", tags: [],
+            billable: false, syncState: .synced
+        )
+        let newer = TimeEntry(
+            id: "101", remoteID: "101", start: sharedStart, end: sharedStart.addingTimeInterval(30),
+            projectID: nil, projectName: nil, clientName: nil, note: "Newer", tags: [],
+            billable: false, syncState: .synced
+        )
+        var updatedOlder = older
+        updatedOlder.end = sharedStart.addingTimeInterval(10_000)
+
+        XCTAssertEqual([updatedOlder, newer].sorted(by: TimeEntry.newestCreatedFirst).map(\.id), ["101", "100"])
     }
 }

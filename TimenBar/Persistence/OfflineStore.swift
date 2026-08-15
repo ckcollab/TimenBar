@@ -84,6 +84,33 @@ final class OfflineStore {
         try context.save()
     }
 
+    func discardLocalEntryAndMutations(entryID: String) throws {
+        let localEntryID = entryID
+        let entryDescriptor = FetchDescriptor<CachedEntry>(predicate: #Predicate { $0.id == localEntryID })
+        try context.fetch(entryDescriptor).forEach(context.delete)
+
+        let mutationDescriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate { $0.entryID == localEntryID })
+        let mutations = try context.fetch(mutationDescriptor)
+        let mutationIDs = Set(mutations.map(\.id))
+        mutations.forEach(context.delete)
+
+        let conflicts = try context.fetch(FetchDescriptor<ConflictRecord>())
+        conflicts.filter { mutationIDs.contains($0.mutationID) }.forEach(context.delete)
+        try context.save()
+    }
+
+    func discardAllQueuedWork() throws {
+        try context.fetch(FetchDescriptor<OutboxRecord>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<ConflictRecord>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<CachedEntry>())
+            .filter { $0.syncStateRaw != SyncState.synced.rawValue }
+            .forEach(context.delete)
+        try context.fetch(FetchDescriptor<PendingSegmentRecord>())
+            .filter { $0.remoteTimerID == nil }
+            .forEach(context.delete)
+        try context.save()
+    }
+
     func favorites() throws -> [Favorite] {
         try context.fetch(FetchDescriptor<FavoriteRecord>(sortBy: [SortDescriptor(\.sortOrder)]))
             .map(\.domain)
@@ -220,5 +247,11 @@ final class OfflineStore {
         record.endedAt = date
         try context.save()
         return record.domain
+    }
+
+    func discardActiveSegment() throws {
+        let descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
+        try context.fetch(descriptor).forEach(context.delete)
+        try context.save()
     }
 }

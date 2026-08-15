@@ -14,6 +14,7 @@ protocol TimenGateway: Sendable {
     func stopTimer() async throws -> TimeEntry
     func logTime(start: Date, end: Date, draft: TimerDraft) async throws -> TimeEntry
     func updateEntry(id: String, draft: TimerDraft, start: Date?, end: Date?) async throws -> TimeEntry
+    func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry
     func deleteEntry(id: String) async throws
 }
 

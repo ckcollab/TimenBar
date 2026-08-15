@@ -5,13 +5,16 @@ import Observation
 
 struct IdlePromptPolicy: Sendable {
     var threshold: TimeInterval
+    var notBefore: Date? = nil
     private(set) var isArmed = true
 
     mutating func observe(idleSeconds: TimeInterval, now: Date) -> Date? {
-        if idleSeconds < 2 { isArmed = true }
-        guard isArmed, idleSeconds >= threshold else { return nil }
+        let eligibleSeconds = notBefore.map { max(0, now.timeIntervalSince($0)) } ?? idleSeconds
+        let effectiveIdleSeconds = min(idleSeconds, eligibleSeconds)
+        if effectiveIdleSeconds < 2 { isArmed = true }
+        guard isArmed, effectiveIdleSeconds >= threshold else { return nil }
         isArmed = false
-        return now.addingTimeInterval(-idleSeconds)
+        return now.addingTimeInterval(-effectiveIdleSeconds)
     }
 
     mutating func suppressUntilActivity() { isArmed = false }
@@ -46,9 +49,9 @@ final class IdleMonitor {
         notificationTokens.forEach(center.removeObserver)
     }
 
-    func start(threshold: TimeInterval, onIdle: @escaping @MainActor (Date) -> Void) {
+    func start(threshold: TimeInterval, notBefore: Date, onIdle: @escaping @MainActor (Date) -> Void) {
         stop()
-        policy = IdlePromptPolicy(threshold: threshold)
+        policy = IdlePromptPolicy(threshold: threshold, notBefore: notBefore)
         pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }

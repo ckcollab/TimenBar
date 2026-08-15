@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftData
 
 enum AuthenticationState: Equatable {
@@ -12,6 +13,7 @@ enum AuthenticationState: Equatable {
 @MainActor
 @Observable
 final class AppModel {
+    private let actionLogger = Logger(subsystem: "app.timenbar.TimenBar", category: "Actions")
     var authenticationState: AuthenticationState = .checking
     var account: TimenAccount?
     var projects: [TimenProject] = []
@@ -24,10 +26,14 @@ final class AppModel {
     var now = Date.now
     var isLoading = false
     var isSyncing = false
+    var weekNavigationDirection: Int?
     var errorMessage: String?
     var composerMode: TimerComposerMode?
     var idlePrompt: IdlePromptState?
     private(set) var lastTimerDraft: TimerDraft?
+    private(set) var resumedEntryID: String?
+    private(set) var focusedEntryID: String?
+    private var focusedEntrySnapshot: TimeEntry?
 
     let container: ModelContainer
     let settings: AppSettings
@@ -57,6 +63,10 @@ final class AppModel {
         if let data = UserDefaults.standard.data(forKey: "lastTimerDraft") {
             lastTimerDraft = try? JSONDecoder().decode(TimerDraft.self, from: data)
         }
+        focusedEntryID = UserDefaults.standard.string(forKey: "focusedEntryID")
+        if let data = UserDefaults.standard.data(forKey: "focusedEntrySnapshot") {
+            focusedEntrySnapshot = try? JSONDecoder().decode(TimeEntry.self, from: data)
+        }
         loadCachedState()
         startHeartbeat()
         Task { await bootstrap() }
@@ -66,13 +76,42 @@ final class AppModel {
 
     var statusTitle: String {
         guard settings.showElapsedInMenuBar, let runningTimer else { return "TimenBar" }
-        return runningTimer.elapsed(at: now).statusTimerText
+        return runningDisplayDuration.statusTimerText
     }
 
     var statusBarDurationText: String {
         guard settings.showElapsedInMenuBar else { return "TimenBar" }
-        if let runningTimer { return runningTimer.elapsed(at: now).timerText }
-        return entries.max(by: { $0.start < $1.start })?.duration.timerText ?? "0:00"
+        if runningTimer != nil { return runningDisplayDuration.timerText }
+        return quickStartEntry?.duration.timerText ?? "0:00"
+    }
+
+    var runningDisplayDuration: TimeInterval {
+        guard let runningTimer else { return 0 }
+        return resumedBaseEntryDuration + runningTimer.elapsed(at: now)
+    }
+
+    var isContinuingEntry: Bool { resumedEntryID != nil }
+
+    private var resumedBaseEntryDuration: TimeInterval {
+        guard let resumedEntryID else { return 0 }
+        return entries.first(where: { $0.remoteID == resumedEntryID })?.duration ?? 0
+    }
+
+    var quickStartEntry: TimeEntry? {
+        if let focusedEntryID,
+           let focused = entries.first(where: { $0.remoteID == focusedEntryID && $0.syncState == .synced && $0.duration > 0 })
+        {
+            return focused
+        }
+        if let focusedEntrySnapshot,
+           focusedEntrySnapshot.syncState == .synced,
+           focusedEntrySnapshot.duration > 0
+        {
+            return focusedEntrySnapshot
+        }
+        return entries
+            .filter { $0.remoteID != nil && $0.syncState == .synced && $0.duration > 0 }
+            .max(by: { $0.start < $1.start })
     }
 
     var statusSymbol: String {
@@ -87,7 +126,37 @@ final class AppModel {
 
     var selectedDayEntries: [TimeEntry] {
         let interval = dayInterval(containing: selectedDate)
-        return entries.filter { interval.contains($0.start) }.sorted { $0.start > $1.start }
+        var visible = entries.filter { interval.contains($0.start) }
+        if let timer = runningTimer,
+           resumedEntryID == nil,
+           interval.contains(timer.startedAt),
+           !visible.contains(where: { $0.remoteID == timer.remoteID || $0.id == timer.id })
+        {
+            visible.append(TimeEntry(
+                id: timer.id,
+                remoteID: timer.remoteID,
+                start: timer.startedAt,
+                end: nil,
+                projectID: timer.projectID,
+                projectName: timer.projectName,
+                clientName: timer.clientName,
+                note: timer.note,
+                tags: timer.tags,
+                billable: timer.billable,
+                syncState: timer.syncState
+            ))
+        }
+        return visible.sorted(by: TimeEntry.newestCreatedFirst)
+    }
+
+    func isRunningEntry(_ entry: TimeEntry) -> Bool {
+        guard let runningTimer else { return false }
+        if let resumedEntryID { return entry.remoteID == resumedEntryID }
+        return entry.id == runningTimer.id || entry.remoteID == runningTimer.remoteID
+    }
+
+    func displayDuration(for entry: TimeEntry) -> TimeInterval {
+        isRunningEntry(entry) ? runningDisplayDuration : entry.duration
     }
 
     var weekDays: [DaySummary] {
@@ -96,7 +165,13 @@ final class AppModel {
         return (0 ..< 7).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
             let interval = dayInterval(containing: date)
-            let total = entries.filter { interval.contains($0.start) }.reduce(0) { $0 + $1.duration }
+            var total = entries.filter { interval.contains($0.start) }.reduce(0) { $0 + $1.duration }
+            if let resumedEntryID,
+               let resumed = entries.first(where: { $0.remoteID == resumedEntryID }),
+               interval.contains(resumed.start), let runningTimer
+            {
+                total += runningTimer.elapsed(at: now)
+            }
             return DaySummary(date: date, duration: total, isToday: calendar.isDateInToday(date))
         }
     }
@@ -105,6 +180,13 @@ final class AppModel {
         var calendar = Calendar.autoupdatingCurrent
         if let identifier = account?.timeZoneIdentifier, let zone = TimeZone(identifier: identifier) { calendar.timeZone = zone }
         return calendar
+    }
+
+    var canNavigateToNextWeek: Bool {
+        guard let displayedWeek = accountCalendar.dateInterval(of: .weekOfYear, for: selectedDate),
+              let currentWeek = accountCalendar.dateInterval(of: .weekOfYear, for: .now)
+        else { return false }
+        return displayedWeek.start < currentWeek.start
     }
 
     func signIn() async {
@@ -127,6 +209,8 @@ final class AppModel {
         authenticationState = .signedOut
         account = nil
         runningTimer = nil
+        resumedEntryID = nil
+        try? store.discardActiveSegment()
         idleMonitor.stop()
     }
 
@@ -144,7 +228,17 @@ final class AppModel {
         let values = try await (projects, tags, timer, entries)
         self.projects = values.0
         self.tags = values.1
-        runningTimer = values.2
+        let localContinuation = resumedEntryID == nil ? nil : runningTimer
+        if let remoteTimer = values.2 {
+            if resumedEntryID != nil {
+                errorMessage = "A timer was started in Timen while a TimenBar continuation was active. Timen’s running timer is now authoritative."
+                resumedEntryID = nil
+                try? store.discardActiveSegment()
+            }
+            runningTimer = remoteTimer
+        } else {
+            runningTimer = localContinuation
+        }
         self.entries = mergePending(remote: values.3)
         rememberMostRecentTimer(from: values.3)
         try store.replaceProjects(values.0)
@@ -154,6 +248,16 @@ final class AppModel {
     }
 
     func selectDay(_ date: Date) { selectedDate = date }
+
+    func navigateWeek(by offset: Int) async {
+        guard weekNavigationDirection == nil,
+              offset != 0,
+              let destination = accountCalendar.date(byAdding: .weekOfYear, value: offset, to: selectedDate)
+        else { return }
+        weekNavigationDirection = offset < 0 ? -1 : 1
+        defer { weekNavigationDirection = nil }
+        await loadWeek(containing: destination)
+    }
 
     func presentNewTimer() { composerMode = .new(.empty) }
 
@@ -171,117 +275,166 @@ final class AppModel {
 
     func presentEdit(_ entry: TimeEntry) { composerMode = .edit(entry) }
 
-    func startTimer(_ draft: TimerDraft) async {
-        composerMode = nil
-        lastTimerDraft = draft
-        if let data = try? JSONEncoder().encode(draft) {
-            UserDefaults.standard.set(data, forKey: "lastTimerDraft")
+    func restartEntry(_ entry: TimeEntry, source: String = "entry") async {
+        actionLogger.debug("restart-entry source=\(source, privacy: .public) entry=\(entry.remoteID ?? entry.id, privacy: .public)")
+        guard let remoteID = entry.remoteID, entry.syncState == .synced else {
+            errorMessage = "Only synchronized Timen entries can be restarted."
+            return
         }
-        if runningTimer != nil { await stopTimer(at: .now) }
-        let localID = "local:\(UUID().uuidString)"
-        let project = projects.first { $0.id == draft.projectID }
-        let selectedTags = tags.filter { draft.tagIDs.contains($0.id) }
-        let local = RunningTimer(
-            id: localID,
-            remoteID: nil,
-            startedAt: .now,
-            projectID: draft.projectID,
-            projectName: project?.name,
-            clientName: project?.clientName,
-            note: draft.note,
-            tags: selectedTags,
-            billable: draft.billable,
-            syncState: .pending
-        )
-        runningTimer = local
-        try? store.saveSegment(PendingTimerSegment(id: UUID(), startedAt: local.startedAt, endedAt: nil, draft: draft, remoteTimerID: nil))
-        configureIdleMonitor()
-
-        if connectivity.isOnline, authenticationState == .signedIn {
-            do {
-                runningTimer = try await gateway.startTimer(draft)
-                try? store.updateActiveSegment(remoteTimerID: runningTimer?.remoteID)
-                configureIdleMonitor()
-                return
-            } catch { errorMessage = "The timer is running locally and will sync when Timen is reachable." }
-        }
-        _ = try? store.enqueue(kind: .startTimer, entryID: localID, payload: StartTimerPayload(draft: draft, requestedAt: local.startedAt))
-    }
-
-    func quickToggleTimer() async {
-        guard authenticationState == .signedIn else {
-            errorMessage = "Connect Timen before starting a timer."
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to continue an entry."
             return
         }
         if runningTimer != nil {
-            await stopTimer()
-        } else if let lastTimerDraft {
-            await startTimer(lastTimerDraft)
-        } else {
-            errorMessage = "Create a timer from the TimenBar panel first. The play button will restart it from then on."
+            await stopTimer(at: .now, source: "replace-running:\(source)")
+            guard runningTimer == nil else { return }
+        }
+        let draft = TimerDraft(
+            projectID: entry.projectID,
+            tagIDs: entry.tags.map(\.id),
+            note: entry.note,
+            billable: entry.billable
+        )
+        let startedAt = Date.now
+        focus(on: remoteID)
+        resumedEntryID = remoteID
+        runningTimer = RunningTimer(
+            id: "continuation:\(remoteID)",
+            remoteID: nil,
+            startedAt: startedAt,
+            projectID: entry.projectID,
+            projectName: entry.projectName,
+            clientName: entry.clientName,
+            note: entry.note,
+            tags: entry.tags,
+            billable: entry.billable,
+            syncState: .synced
+        )
+        lastTimerDraft = draft
+        composerMode = nil
+        try? store.discardActiveSegment()
+        try? store.saveSegment(PendingTimerSegment(
+            id: UUID(),
+            startedAt: startedAt,
+            endedAt: nil,
+            draft: draft,
+            remoteTimerID: "resume:\(remoteID)"
+        ))
+        configureIdleMonitor()
+    }
+
+    func startTimer(_ draft: TimerDraft, source: String = "composer") async {
+        actionLogger.debug("start-timer source=\(source, privacy: .public) project=\(draft.projectID ?? "unassigned", privacy: .public)")
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to start a timer."
+            return
+        }
+        if runningTimer != nil {
+            await stopTimer(at: .now, source: "replace-running:\(source)")
+            guard runningTimer == nil else { return }
+        }
+        do {
+            let remote = try await gateway.startTimer(draft)
+            if let remoteID = remote.remoteID { focus(on: remoteID) }
+            resumedEntryID = nil
+            runningTimer = remote
+            lastTimerDraft = draft
+            if let data = try? JSONEncoder().encode(draft) {
+                UserDefaults.standard.set(data, forKey: "lastTimerDraft")
+            }
+            composerMode = nil
+            try? store.discardActiveSegment()
+            try? store.saveSegment(PendingTimerSegment(
+                id: UUID(), startedAt: remote.startedAt, endedAt: nil,
+                draft: draft, remoteTimerID: remote.remoteID
+            ))
+            configureIdleMonitor()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
-    func stopTimer(at desiredEnd: Date = .now) async {
+    func quickToggleTimer(source: String = "status-bar") async {
+        actionLogger.debug("quick-toggle source=\(source, privacy: .public) running=\(self.runningTimer != nil, privacy: .public)")
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to change timers."
+            return
+        }
+        if runningTimer != nil {
+            await stopTimer(source: "quick-toggle:\(source)")
+        } else if let quickStartEntry {
+            await restartEntry(quickStartEntry, source: source)
+        } else {
+            errorMessage = "There is no synchronized time entry to restart. Open TimenBar to create one."
+        }
+    }
+
+    func stopTimer(at desiredEnd: Date = .now, source: String = "unspecified") async {
+        actionLogger.debug("stop-timer source=\(source, privacy: .public) timer=\(self.runningTimer?.remoteID ?? "none", privacy: .public)")
         guard let timer = runningTimer else { return }
-        runningTimer = nil
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to stop a timer."
+            return
+        }
         idlePrompt = nil
         idleMonitor.stop()
         let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: timer.billable)
-        let localEntry = TimeEntry(
-            id: timer.id,
-            remoteID: timer.remoteID,
-            start: timer.startedAt,
-            end: max(desiredEnd, timer.startedAt),
-            projectID: timer.projectID,
-            projectName: timer.projectName,
-            clientName: timer.clientName,
-            note: timer.note,
-            tags: timer.tags,
-            billable: timer.billable,
-            syncState: .pending
-        )
-        entries.removeAll { $0.id == localEntry.id }
-        entries.append(localEntry)
-        try? store.upsertEntries([localEntry])
-        _ = try? store.closeActiveSegment(at: desiredEnd)
-
-        if connectivity.isOnline, authenticationState == .signedIn {
-            do {
-                var remote = try await gateway.stopTimer()
-                let timingChanged = abs(desiredEnd.timeIntervalSince(.now)) > 2
-                let metadataChanged = remote.projectID != draft.projectID ||
-                    Set(remote.tags.map(\.id)) != Set(draft.tagIDs) ||
-                    remote.note != draft.note || remote.billable != draft.billable
-                if (timingChanged || metadataChanged), let id = remote.remoteID {
-                    remote = try await gateway.updateEntry(
-                        id: id,
-                        draft: draft,
-                        start: timingChanged ? timer.startedAt : nil,
-                        end: timingChanged ? desiredEnd : nil
-                    )
-                }
-                entries.removeAll { $0.id == localEntry.id || $0.id == remote.id }
-                entries.append(remote)
-                try? store.deleteEntry(id: localEntry.id)
-                try? store.upsertEntries([remote])
+        do {
+            if let resumedEntryID,
+               let original = entries.first(where: { $0.remoteID == resumedEntryID })
+            {
+                let addedDuration = max(0, desiredEnd.timeIntervalSince(timer.startedAt))
+                let updated = try await gateway.updateEntryDuration(
+                    id: resumedEntryID,
+                    draft: draft,
+                    duration: original.duration + addedDuration
+                )
+                runningTimer = nil
+                self.resumedEntryID = nil
+                idlePrompt = nil
+                idleMonitor.stop()
+                try? store.discardActiveSegment()
+                entries.removeAll { $0.id == original.id || $0.remoteID == resumedEntryID }
+                entries.append(updated)
+                if let updatedID = updated.remoteID { focus(on: updatedID) }
+                try? store.deleteEntry(id: original.id)
+                try? store.upsertEntries([updated])
                 return
-            } catch { errorMessage = "The stop was saved locally and needs synchronization." }
-        }
-
-        if timer.remoteID == nil {
-            try? store.cancelPendingStart(entryID: timer.id)
-            _ = try? store.enqueue(
-                kind: .logTime,
-                entryID: localEntry.id,
-                payload: LogTimePayload(localEntryID: localEntry.id, start: timer.startedAt, end: desiredEnd, draft: draft)
-            )
-        } else {
-            _ = try? store.enqueue(kind: .stopTimer, entryID: localEntry.id, payload: StopTimerPayload(timer: timer, desiredEnd: desiredEnd))
+            }
+            var remote = try await gateway.stopTimer()
+            let timingChanged = abs(desiredEnd.timeIntervalSince(.now)) > 2
+            let metadataChanged = remote.projectID != draft.projectID ||
+                Set(remote.tags.map(\.id)) != Set(draft.tagIDs) ||
+                remote.note != draft.note || remote.billable != draft.billable
+            if (timingChanged || metadataChanged), let id = remote.remoteID {
+                remote = try await gateway.updateEntry(
+                    id: id,
+                    draft: draft,
+                    start: timingChanged ? timer.startedAt : nil,
+                    end: timingChanged ? desiredEnd : nil
+                )
+            }
+            runningTimer = nil
+            resumedEntryID = nil
+            idlePrompt = nil
+            idleMonitor.stop()
+            _ = try? store.closeActiveSegment(at: desiredEnd)
+            entries.removeAll { $0.id == timer.id || $0.remoteID == remote.remoteID }
+            entries.append(remote)
+            if let remoteID = remote.remoteID { focus(on: remoteID) }
+            try? store.deleteEntry(id: timer.id)
+            try? store.upsertEntries([remote])
+        } catch {
+            errorMessage = error.localizedDescription
+            configureIdleMonitor()
         }
     }
 
     func updateRunningTimer(_ draft: TimerDraft) {
+        guard connectivity.isOnline else {
+            errorMessage = "TimenBar must be online to edit a running timer."
+            return
+        }
         guard var timer = runningTimer else { return }
         let project = projects.first { $0.id == draft.projectID }
         timer.projectID = draft.projectID
@@ -290,7 +443,6 @@ final class AppModel {
         timer.tags = tags.filter { draft.tagIDs.contains($0.id) }
         timer.note = draft.note
         timer.billable = draft.billable
-        if timer.remoteID != nil { timer.syncState = .pending }
         runningTimer = timer
         try? store.updateActiveSegment(draft: draft)
         composerMode = nil
@@ -299,49 +451,45 @@ final class AppModel {
     func trackingSettingsChanged() { configureIdleMonitor() }
 
     func updateEntry(_ entry: TimeEntry, draft: TimerDraft, start: Date?, end: Date?) async {
-        composerMode = nil
-        var local = entry
-        local.projectID = draft.projectID
-        if let project = projects.first(where: { $0.id == draft.projectID }) {
-            local.projectName = project.name
-            local.clientName = project.clientName
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to edit entries."
+            return
         }
-        local.tags = tags.filter { draft.tagIDs.contains($0.id) }
-        local.note = draft.note
-        local.billable = draft.billable
-        if let start { local.start = start }
-        if let end { local.end = end }
-        local.syncState = .pending
-        entries.removeAll { $0.id == entry.id }
-        entries.append(local)
-        try? store.upsertEntries([local])
-        guard let remoteID = entry.remoteID else { return }
-
-        if connectivity.isOnline {
-            do {
-                let updated = try await gateway.updateEntry(id: remoteID, draft: draft, start: start, end: end)
-                entries.removeAll { $0.id == entry.id || $0.id == updated.id }
-                entries.append(updated)
-                try? store.upsertEntries([updated])
-                return
-            } catch { errorMessage = "The edit was queued for synchronization." }
+        guard let remoteID = entry.remoteID else {
+            errorMessage = "This local entry cannot be edited because offline syncing is disabled."
+            return
         }
-        _ = try? store.enqueue(
-            kind: .updateEntry,
-            entryID: entry.id,
-            payload: UpdateEntryPayload(entryID: remoteID, draft: draft, start: start, end: end, baseSummary: summary(entry))
-        )
+        do {
+            let updated = try await gateway.updateEntry(id: remoteID, draft: draft, start: start, end: end)
+            composerMode = nil
+            entries.removeAll { $0.id == entry.id || $0.id == updated.id }
+            entries.append(updated)
+            if let remoteID = updated.remoteID { focus(on: remoteID) }
+            try? store.upsertEntries([updated])
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func deleteEntry(_ entry: TimeEntry) async {
-        entries.removeAll { $0.id == entry.id }
-        try? store.deleteEntry(id: entry.id)
-        guard let remoteID = entry.remoteID else { return }
-        if connectivity.isOnline {
-            do { try await gateway.deleteEntry(id: remoteID); return }
-            catch { errorMessage = "The deletion was queued for synchronization." }
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to delete entries."
+            return
         }
-        _ = try? store.enqueue(kind: .deleteEntry, entryID: entry.id, payload: DeleteEntryPayload(entryID: remoteID, baseSummary: summary(entry)))
+        guard let remoteID = entry.remoteID else {
+            try? store.discardLocalEntryAndMutations(entryID: entry.id)
+            entries.removeAll { $0.id == entry.id }
+            return
+        }
+        do {
+            try await gateway.deleteEntry(id: remoteID)
+            entries.removeAll { $0.id == entry.id }
+            if focusedEntryID == remoteID {
+                focusedEntryID = nil
+                focusedEntrySnapshot = nil
+                UserDefaults.standard.removeObject(forKey: "focusedEntryID")
+                UserDefaults.standard.removeObject(forKey: "focusedEntrySnapshot")
+            }
+            try? store.deleteEntry(id: entry.id)
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func toggleFavorite(draft: TimerDraft) {
@@ -368,19 +516,19 @@ final class AppModel {
 
     func startFavorite(_ favorite: Favorite) async {
         let draft = TimerDraft(projectID: favorite.projectID, tagIDs: favorite.tagIDs, note: favorite.note, billable: favorite.billable)
-        await startTimer(draft)
+        await startTimer(draft, source: "favorite")
     }
 
     func resolveIdle(_ resolution: IdleResolution) async {
         guard let prompt = idlePrompt else { return }
         switch resolution {
         case .keepAndStop:
-            await stopTimer(at: .now)
+            await stopTimer(at: .now, source: "idle-keep-and-stop")
         case let .removeIdleAndStop(idleStartedAt):
-            await stopTimer(at: max(idleStartedAt, runningTimer?.startedAt ?? idleStartedAt))
+            await stopTimer(at: max(idleStartedAt, runningTimer?.startedAt ?? idleStartedAt), source: "idle-remove-and-stop")
         case .deleteEntry:
             guard let timer = runningTimer else { return }
-            await stopTimer(at: .now)
+            await stopTimer(at: .now, source: "idle-delete-entry")
             if let entry = entries.first(where: { $0.id == timer.id || $0.remoteID == timer.remoteID }) { await deleteEntry(entry) }
         case .continueWorking:
             idleMonitor.suppressUntilActivity()
@@ -394,32 +542,8 @@ final class AppModel {
         guard connectivity.isOnline, authenticationState == .signedIn, !isSyncing else { return }
         isSyncing = true
         defer { isSyncing = false }
-        guard let mutations = try? store.pendingMutations() else { return }
-        for mutation in mutations {
-            do {
-                try store.setMutation(mutation.id, state: .sending)
-                try await apply(mutation)
-                try store.setMutation(mutation.id, state: .applied)
-            } catch {
-                if await reconcile(mutation) {
-                    try? store.setMutation(mutation.id, state: .applied)
-                } else {
-                    let conflict = SyncConflict(
-                        id: UUID(),
-                        mutationID: mutation.id,
-                        title: "Could not verify \(mutation.kind.rawValue)",
-                        explanation: "Timen may have accepted this change, but TimenBar could not prove the result without risking a duplicate.",
-                        localSummary: mutation.entryID ?? mutation.kind.rawValue,
-                        remoteSummary: error.localizedDescription,
-                        createdAt: .now
-                    )
-                    try? store.addConflict(conflict)
-                }
-            }
-        }
-        try? store.removeAppliedMutations()
-        conflicts = (try? store.conflicts()) ?? []
-        try? await refreshAll()
+        do { try await refreshAll() }
+        catch { errorMessage = error.localizedDescription }
     }
 
     func resolveConflict(_ conflict: SyncConflict, decision: ConflictDecision) async {
@@ -466,8 +590,11 @@ final class AppModel {
     }
 
     private func configureIdleMonitor() {
-        guard runningTimer != nil, settings.idleDetectionEnabled else { idleMonitor.stop(); return }
-        idleMonitor.start(threshold: TimeInterval(settings.idleThresholdMinutes * 60)) { [weak self] idleStartedAt in
+        guard let runningTimer, settings.idleDetectionEnabled else { idleMonitor.stop(); return }
+        idleMonitor.start(
+            threshold: TimeInterval(settings.idleThresholdMinutes * 60),
+            notBefore: runningTimer.startedAt
+        ) { [weak self] idleStartedAt in
             guard let self, self.runningTimer != nil else { return }
             self.idlePrompt = IdlePromptState(idleStartedAt: idleStartedAt, showRemovalChoices: false)
             if self.settings.notificationsEnabled {
@@ -477,18 +604,38 @@ final class AppModel {
     }
 
     private func loadCachedState() {
+        try? store.discardAllQueuedWork()
         projects = (try? store.projects()) ?? []
         tags = (try? store.tags()) ?? []
         favorites = (try? store.favorites()) ?? []
         conflicts = (try? store.conflicts()) ?? []
         let week = visibleWeekInterval()
         entries = (try? store.entries(from: week.start, to: week.end)) ?? []
+        if let focusedEntryID,
+           let focused = entries.first(where: { $0.remoteID == focusedEntryID })
+        {
+            focusedEntrySnapshot = focused
+        }
+        let accidentalEntries = entries.filter {
+            guard $0.remoteID == nil, $0.syncState == .pending, $0.end != nil, $0.duration < 60 else { return false }
+            let candidate = $0
+            return entries.contains {
+                $0.remoteID != nil && $0.projectID == candidate.projectID && $0.note == candidate.note &&
+                    accountCalendar.isDate($0.start, inSameDayAs: candidate.start)
+            }
+        }
+        for entry in accidentalEntries { try? store.discardLocalEntryAndMutations(entryID: entry.id) }
+        entries.removeAll { entry in accidentalEntries.contains(where: { $0.id == entry.id }) }
         rememberMostRecentTimer(from: entries)
         if let segment = try? store.activeSegment() {
+            let continuationID = segment.remoteTimerID?.hasPrefix("resume:") == true
+                ? String(segment.remoteTimerID!.dropFirst("resume:".count))
+                : nil
+            resumedEntryID = continuationID
             let project = projects.first { $0.id == segment.draft.projectID }
             runningTimer = RunningTimer(
                 id: "local:\(segment.id.uuidString)",
-                remoteID: segment.remoteTimerID,
+                remoteID: continuationID == nil ? segment.remoteTimerID : nil,
                 startedAt: segment.startedAt,
                 projectID: segment.draft.projectID,
                 projectName: project?.name,
@@ -585,8 +732,12 @@ final class AppModel {
     }
 
     private func visibleWeekInterval() -> DateInterval {
-        accountCalendar.dateInterval(of: .weekOfYear, for: selectedDate)
-            ?? DateInterval(start: accountCalendar.startOfDay(for: selectedDate), duration: 7 * 86_400)
+        weekInterval(containing: selectedDate)
+    }
+
+    private func weekInterval(containing date: Date) -> DateInterval {
+        accountCalendar.dateInterval(of: .weekOfYear, for: date)
+            ?? DateInterval(start: accountCalendar.startOfDay(for: date), duration: 7 * 86_400)
     }
 
     private func dayInterval(containing date: Date) -> DateInterval {
@@ -598,14 +749,60 @@ final class AppModel {
         "\(entry.projectName ?? "Unassigned") · \(entry.duration.timerText) · \(entry.note)"
     }
 
+    private func isPermanentServerError(_ error: Error) -> Bool {
+        guard let error = error as? TimenBarError else { return false }
+        return switch error {
+        case .networkUnavailable: false
+        case .notAuthenticated, .incompatibleServer, .invalidResponse, .oauth, .conflict: true
+        }
+    }
+
     private func rememberMostRecentTimer(from entries: [TimeEntry]) {
-        guard lastTimerDraft == nil, let entry = entries.max(by: { $0.start < $1.start }) else { return }
-        lastTimerDraft = TimerDraft(
-            projectID: entry.projectID,
-            tagIDs: entry.tags.map(\.id),
-            note: entry.note,
-            billable: entry.billable
-        )
+        guard let entry = entries.max(by: { $0.start < $1.start }) else { return }
+        if focusedEntryID == nil {
+            focus(on: entry.remoteID)
+        } else if entries.contains(where: { $0.remoteID == focusedEntryID }) {
+            focus(on: focusedEntryID)
+        }
+        if lastTimerDraft == nil {
+            lastTimerDraft = TimerDraft(
+                projectID: entry.projectID,
+                tagIDs: entry.tags.map(\.id),
+                note: entry.note,
+                billable: entry.billable
+            )
+        }
+    }
+
+    private func focus(on remoteID: String?) {
+        guard let remoteID else { return }
+        focusedEntryID = remoteID
+        UserDefaults.standard.set(remoteID, forKey: "focusedEntryID")
+        if let entry = entries.first(where: { $0.remoteID == remoteID }) {
+            focusedEntrySnapshot = entry
+            if let data = try? JSONEncoder().encode(entry) {
+                UserDefaults.standard.set(data, forKey: "focusedEntrySnapshot")
+            }
+        }
+    }
+
+    private func loadWeek(containing destination: Date) async {
+        let week = weekInterval(containing: destination)
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            let cached = (try? store.entries(from: week.start, to: week.end)) ?? []
+            selectedDate = destination
+            entries = cached
+            return
+        }
+        do {
+            let remote = try await gateway.entries(from: week.start, to: week.end)
+            selectedDate = destination
+            entries = mergePending(remote: remote)
+            try store.replaceSyncedEntries(remote, from: week.start, to: week.end)
+            rememberMostRecentTimer(from: remote)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

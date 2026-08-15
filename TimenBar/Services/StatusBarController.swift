@@ -12,6 +12,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private weak var appModel: AppModel?
     private let actionButton = StatusSegmentButton(frame: .zero)
     private let durationButton = StatusSegmentButton(frame: .zero)
+    private let durationLabel = StatusDurationLabel(labelWithString: "0:00")
+    private let splitBackground = SplitStatusBackgroundView(frame: .zero)
     private var outsideClickMonitor: Any?
     private var resignObserver: NSObjectProtocol?
 
@@ -59,18 +61,35 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         durationButton.target = self
         durationButton.action = #selector(togglePanel)
         durationButton.translatesAutoresizingMaskIntoConstraints = false
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+        durationLabel.textColor = .white
+        durationLabel.alignment = .center
+        durationButton.addSubview(durationLabel)
+        NSLayoutConstraint.activate([
+            durationLabel.centerXAnchor.constraint(equalTo: durationButton.centerXAnchor),
+            durationLabel.centerYAnchor.constraint(equalTo: durationButton.centerYAnchor),
+        ])
 
         let stack = NSStackView(views: [actionButton, durationButton])
         stack.orientation = .horizontal
-        stack.spacing = 1
+        stack.spacing = 0
         stack.distribution = .fill
+        stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
+        splitBackground.translatesAutoresizingMaskIntoConstraints = false
+        containerButton.addSubview(splitBackground)
         containerButton.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: containerButton.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: containerButton.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: containerButton.topAnchor, constant: 2),
-            stack.bottomAnchor.constraint(equalTo: containerButton.bottomAnchor, constant: -2),
+            splitBackground.leadingAnchor.constraint(equalTo: containerButton.leadingAnchor, constant: 2),
+            splitBackground.trailingAnchor.constraint(equalTo: containerButton.trailingAnchor, constant: -2),
+            splitBackground.centerYAnchor.constraint(equalTo: containerButton.centerYAnchor),
+            splitBackground.heightAnchor.constraint(equalToConstant: 22),
+            stack.leadingAnchor.constraint(equalTo: containerButton.leadingAnchor, constant: 2),
+            stack.trailingAnchor.constraint(equalTo: containerButton.trailingAnchor, constant: -2),
+            stack.centerYAnchor.constraint(equalTo: containerButton.centerYAnchor),
+            stack.heightAnchor.constraint(equalToConstant: 22),
+            actionButton.heightAnchor.constraint(equalTo: stack.heightAnchor),
+            durationButton.heightAnchor.constraint(equalTo: stack.heightAnchor),
         ])
     }
 
@@ -85,12 +104,13 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     @objc private func toggleTimer() {
         guard let appModel else { return }
         let canAct = appModel.authenticationState == .signedIn &&
-            (appModel.runningTimer != nil || appModel.lastTimerDraft != nil)
+            appModel.connectivity.isOnline &&
+            (appModel.runningTimer != nil || appModel.quickStartEntry != nil)
         guard canAct else {
             showPanel()
             return
         }
-        Task { await appModel.quickToggleTimer() }
+        Task { await appModel.quickToggleTimer(source: "status-bar-play-pause") }
     }
 
     private func showPanel() {
@@ -102,8 +122,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         withObservationTracking {
             _ = appModel?.statusBarDurationText
             _ = appModel?.runningTimer
-            _ = appModel?.lastTimerDraft
+            _ = appModel?.quickStartEntry?.id
             _ = appModel?.authenticationState
+            _ = appModel?.connectivity.isOnline
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.refresh()
@@ -116,28 +137,40 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         guard let appModel else { return }
         let isRunning = appModel.runningTimer != nil
         let isConnected = appModel.authenticationState == .signedIn
-        let actionColor: NSColor = !isConnected ? .systemGray : (isRunning ? .systemOrange : .systemGreen)
+        let actionColor = isRunning
+            ? NSColor(srgbRed: 1.0, green: 0.34, blue: 0.0, alpha: 1.0)
+            : NSColor(srgbRed: 0.34, green: 0.34, blue: 0.37, alpha: 0.96)
+        let durationColor = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 0.96)
 
-        let image = NSImage(systemSymbolName: isRunning ? "pause.fill" : "play.fill", accessibilityDescription: nil)
-        image?.isTemplate = true
+        let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        let image = NSImage(systemSymbolName: isRunning ? "pause.fill" : "play.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(symbolConfiguration)
+        image?.isTemplate = false
         actionButton.image = image
         actionButton.contentTintColor = .white
-        actionButton.segmentColor = actionColor
+        actionButton.segmentColor = .clear
         actionButton.toolTip = !isConnected
             ? "Open TimenBar to connect Timen"
+            : (!appModel.connectivity.isOnline ? "TimenBar must be online to change timers"
             : (isRunning ? "Stop the current timer" : "Start the most recent timer")
+              )
         actionButton.setAccessibilityLabel(isRunning ? "Stop current timer" : "Start current timer")
 
-        durationButton.title = appModel.statusBarDurationText
-        durationButton.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-        durationButton.contentTintColor = .labelColor
-        durationButton.segmentColor = actionColor.withAlphaComponent(isRunning ? 0.24 : 0.15)
+        let durationFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        durationButton.title = ""
+        durationLabel.stringValue = appModel.statusBarDurationText
+        durationLabel.font = durationFont
+        durationButton.contentTintColor = .white
+        durationButton.segmentColor = .clear
+        splitBackground.actionColor = actionColor
+        splitBackground.durationColor = durationColor
         durationButton.toolTip = "Open TimenBar"
         durationButton.setAccessibilityLabel("Open TimenBar, current duration \(appModel.statusBarDurationText)")
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: durationButton.font as Any]
+        let attributes: [NSAttributedString.Key: Any] = [.font: durationFont]
         let textWidth = ceil((appModel.statusBarDurationText as NSString).size(withAttributes: attributes).width)
-        statusItem.length = 20 + 1 + textWidth + 6
+        statusItem.length = 2 + 20 + textWidth + 6 + 2
     }
 
     isolated deinit {
@@ -145,6 +178,30 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         NSStatusBar.system.removeStatusItem(statusItem)
     }
+}
+
+private final class StatusDurationLabel: NSTextField {
+    override var allowsVibrancy: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private final class SplitStatusBackgroundView: NSView {
+    var actionColor: NSColor = .clear { didSet { needsDisplay = true } }
+    var durationColor: NSColor = .clear { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let outerPath = NSBezierPath(roundedRect: bounds, xRadius: 2, yRadius: 2)
+        durationColor.setFill()
+        outerPath.fill()
+
+        NSGraphicsContext.saveGraphicsState()
+        outerPath.addClip()
+        actionColor.setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: min(20, bounds.width), height: bounds.height)).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 private final class StatusSegmentButton: NSButton {
@@ -157,16 +214,14 @@ private final class StatusSegmentButton: NSButton {
         imagePosition = .imageOnly
         imageScaling = .scaleNone
         focusRingType = .none
-        wantsLayer = true
-        layer?.cornerRadius = 4
-        layer?.cornerCurve = .continuous
     }
 
     required init?(coder: NSCoder) { nil }
 
-    override func updateLayer() {
-        super.updateLayer()
-        layer?.backgroundColor = segmentColor.cgColor
+    override func draw(_ dirtyRect: NSRect) {
+        segmentColor.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 2, yRadius: 2).fill()
+        super.draw(dirtyRect)
     }
 
     override func mouseEntered(with event: NSEvent) {

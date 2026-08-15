@@ -50,6 +50,19 @@ struct TimeEntry: Codable, Hashable, Identifiable, Sendable {
     var duration: TimeInterval {
         max(0, (end ?? .now).timeIntervalSince(start))
     }
+
+    /// Timen's integer entry IDs increase as entries are created. Using that
+    /// immutable sequence keeps edits and timer transitions from moving rows.
+    static func newestCreatedFirst(_ lhs: TimeEntry, _ rhs: TimeEntry) -> Bool {
+        if let leftID = lhs.remoteID.flatMap(Int64.init),
+           let rightID = rhs.remoteID.flatMap(Int64.init),
+           leftID != rightID
+        {
+            return leftID > rightID
+        }
+        if lhs.start != rhs.start { return lhs.start > rhs.start }
+        return lhs.id > rhs.id
+    }
 }
 
 struct RunningTimer: Codable, Hashable, Identifiable, Sendable {

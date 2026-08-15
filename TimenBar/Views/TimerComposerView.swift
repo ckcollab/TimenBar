@@ -84,6 +84,12 @@ struct TimerComposerView: View {
 
                 Toggle("Billable", isOn: $draft.billable)
 
+                if !appModel.connectivity.isOnline {
+                    Label("Connect to the internet to save timer changes.", systemImage: "wifi.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
                 if case .edit = mode {
                     HStack {
                         DatePicker("Start", selection: $start)
@@ -101,15 +107,19 @@ struct TimerComposerView: View {
                 if case .running = mode {
                     Button("Stop") {
                         dismiss()
-                        Task { await appModel.stopTimer() }
+                        Task { await appModel.stopTimer(source: "running-composer-stop") }
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!appModel.connectivity.isOnline)
                 }
                 Button(primaryTitle) { performPrimaryAction() }
                     .buttonStyle(.borderedProminent)
                     .tint(TimenBarTheme.accent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(end < start)
+                    .disabled(
+                        end < start || !appModel.connectivity.isOnline ||
+                            appModel.authenticationState != .signedIn
+                    )
             }
             .padding(14)
             .background(.bar)
@@ -191,7 +201,7 @@ struct TimerComposerView: View {
     private var elapsedText: String {
         switch mode {
         case .new, .restart: "0:00"
-        case let .running(timer): timer.elapsed(at: appModel.now).timerText
+        case .running: appModel.runningDisplayDuration.timerText
         case .edit: max(0, end.timeIntervalSince(start)).timerText
         }
     }
@@ -199,7 +209,7 @@ struct TimerComposerView: View {
     private func performPrimaryAction() {
         switch mode {
         case .new, .restart:
-            Task { await appModel.startTimer(draft) }
+            Task { await appModel.startTimer(draft, source: "timer-composer") }
         case .running:
             appModel.updateRunningTimer(draft)
         case let .edit(entry):

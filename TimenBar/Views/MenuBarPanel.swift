@@ -45,19 +45,8 @@ struct MenuBarPanel: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appModel.selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
-                    .font(.title3.weight(.semibold))
-                if let account = appModel.account {
-                    Text(account.teamName)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                } else {
-                    Text("Unofficial Timen client")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                }
-            }
+            Text(appModel.selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                .font(.title3.weight(.semibold))
             Spacer()
             if appModel.isSyncing {
                 ProgressView().controlSize(.small).tint(.white)
@@ -79,13 +68,22 @@ struct MenuBarPanel: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
-        .frame(height: 76)
+        .frame(height: 54)
         .background(TimenBarTheme.headerGradient)
     }
 
     private var signedInContent: some View {
         VStack(spacing: 0) {
-            WeekStripView(days: appModel.weekDays, selectedDate: appModel.selectedDate) { appModel.selectDay($0) }
+            WeekStripView(
+                days: appModel.weekDays,
+                selectedDate: appModel.selectedDate,
+                calendar: appModel.accountCalendar,
+                select: { appModel.selectDay($0) },
+                previousWeek: { Task { await appModel.navigateWeek(by: -1) } },
+                nextWeek: { Task { await appModel.navigateWeek(by: 1) } },
+                canNavigateNext: appModel.canNavigateToNextWeek,
+                navigationDirection: appModel.weekNavigationDirection
+            )
 
             Divider()
 
@@ -114,10 +112,6 @@ struct MenuBarPanel: View {
                 }
             }
 
-            if let timer = appModel.runningTimer {
-                RunningTimerBar(timer: timer)
-                    .environment(appModel)
-            }
         }
     }
 
@@ -194,41 +188,5 @@ private struct SignedOutView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
-    }
-}
-
-private struct RunningTimerBar: View {
-    @Environment(AppModel.self) private var appModel
-    let timer: RunningTimer
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(timer.projectName ?? "Unassigned")
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(timer.note.isEmpty ? "Timer running" : timer.note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            Text(timer.elapsed(at: appModel.now).timerText)
-                .font(.title3.monospacedDigit())
-            Button("Edit") { appModel.presentRunningTimer() }
-                .buttonStyle(.borderless)
-            Button {
-                Task { await appModel.stopTimer() }
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(TimenBarTheme.accent)
-            .help("Stop timer")
-        }
-        .padding(14)
-        .background(TimenBarTheme.accent.opacity(0.10))
-        .overlay(alignment: .top) { Divider() }
     }
 }

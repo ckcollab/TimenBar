@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import OSLog
 
 private final class BearerTokenBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -22,12 +23,14 @@ private final class BearerTokenBox: @unchecked Sendable {
 }
 
 actor TimenMCPGateway: TimenGateway {
+    private let logger = Logger(subsystem: "app.timenbar.TimenBar", category: "MCP")
     private let oauth: OAuthSession
     private let tokenBox = BearerTokenBox()
     private var client: Client?
     private var transport: HTTPClientTransport?
     private var schemas: [String: Value] = [:]
     private var currentAccountID: String?
+    private var knownTagNames: [String: String] = [:]
 
     init(oauth: OAuthSession = OAuthSession()) {
         self.oauth = oauth
@@ -64,6 +67,13 @@ actor TimenMCPGateway: TimenGateway {
 
         let missing = TimenToolContract.missing(from: names)
         guard missing.isEmpty else { throw TimenBarError.incompatibleServer(missingTools: missing) }
+#if DEBUG
+        for name in ["timen_start_timer", "timen_stop_timer", "timen_update_time_entry", "timen_delete_time_entry"] {
+            if let schema = schemas[name] {
+                logger.debug("schema \(name, privacy: .public)=\(Self.logJSONValue(schema), privacy: .public)")
+            }
+        }
+#endif
     }
 
     func account() async throws -> TimenAccount {
@@ -116,7 +126,9 @@ actor TimenMCPGateway: TimenGateway {
     }
 
     func tags() async throws -> [TimenTag] {
-        parseTags(try await call("timen_list_tags"))
+        let tags = parseTags(try await call("timen_list_tags"))
+        knownTagNames = tags.reduce(into: [:]) { $0[$1.id] = $1.name }
+        return tags
     }
 
     func entries(from: Date, to: Date) async throws -> [TimeEntry] {
@@ -125,13 +137,14 @@ actor TimenMCPGateway: TimenGateway {
             SemanticArgument(names: ["end_date", "to", "end", "to_date"], value: .string(Self.dayString(to))),
         ]
         if let currentAccountID {
+            let identifierValue = Self.identifierValue(currentAccountID)
             filters.append(SemanticArgument(
                 names: ["user_id", "member_id", "person_id", "owner_id"],
-                value: .string(currentAccountID)
+                value: identifierValue
             ))
             filters.append(SemanticArgument(
                 names: ["user_ids", "member_ids", "person_ids", "owner_ids"],
-                value: .array([.string(currentAccountID)])
+                value: .array([identifierValue])
             ))
         }
         let arguments = arguments(for: "timen_list_time_entries", values: filters)
@@ -180,7 +193,7 @@ actor TimenMCPGateway: TimenGateway {
 
     func updateEntry(id: String, draft: TimerDraft, start: Date?, end: Date?) async throws -> TimeEntry {
         var values = draftSemanticArguments(draft)
-        values.append(SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: .string(id)))
+        values.append(SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)))
         if let start { values.append(SemanticArgument(names: ["start", "started_at", "start_time"], value: .string(Self.dateString(start)))) }
         if let end { values.append(SemanticArgument(names: ["end", "ended_at", "end_time"], value: .string(Self.dateString(end)))) }
         let value = try await call("timen_update_time_entry", arguments: arguments(for: "timen_update_time_entry", values: values))
@@ -189,13 +202,34 @@ actor TimenMCPGateway: TimenGateway {
         return entry
     }
 
+    func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry {
+        var values = draftSemanticArguments(draft)
+        values.append(SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)))
+        values.append(SemanticArgument(names: ["duration"], value: .int(max(0, Int(duration.rounded())))))
+        let value = try await call(
+            "timen_update_time_entry",
+            arguments: arguments(for: "timen_update_time_entry", values: values)
+        )
+        let candidate = value.firstValue(keys: ["time_entry", "entry", "data"]) ?? value
+        guard let entry = parseEntry(candidate) else {
+            throw TimenBarError.invalidResponse("Updated entry was missing from the response.")
+        }
+        return entry
+    }
+
     func deleteEntry(id: String) async throws {
-        _ = try await call(
+        let response = try await call(
             "timen_delete_time_entry",
             arguments: arguments(for: "timen_delete_time_entry", values: [
-                SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: .string(id)),
+                SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
+                SemanticArgument(names: ["confirm"], value: .bool(true)),
             ])
         )
+        if response.bool(keys: ["deleted"]) == false {
+            throw TimenBarError.invalidResponse(
+                response.string(keys: ["message"]) ?? "Timen did not confirm that the entry was deleted."
+            )
+        }
     }
 
     private func connectedClient() async throws -> Client {
@@ -221,21 +255,39 @@ actor TimenMCPGateway: TimenGateway {
     }
 
     private func call(_ name: String, arguments: [String: Value]? = nil) async throws -> Value {
+        let traceID = String(UUID().uuidString.prefix(8))
+#if DEBUG
+        logger.debug("[\(traceID, privacy: .public)] → \(name, privacy: .public) args=\(Self.logJSON(arguments ?? [:]), privacy: .public)")
+#endif
         let token = try await oauth.accessToken()
         tokenBox.update(token)
         let client = try await connectedClient()
-        let result = try await client.callTool(name: name, arguments: arguments)
+        let result: (content: [Tool.Content], isError: Bool?)
+        do {
+            result = try await client.callTool(name: name, arguments: arguments)
+        } catch {
+#if DEBUG
+            logger.error("[\(traceID, privacy: .public)] ← \(name, privacy: .public) transport-error=\(error.localizedDescription, privacy: .public)")
+#endif
+            throw error
+        }
         if result.isError == true {
             let message = result.content.compactMap { content -> String? in
                 if case let .text(text) = content { return text }
                 return nil
             }.joined(separator: "\n")
+#if DEBUG
+            logger.error("[\(traceID, privacy: .public)] ← \(name, privacy: .public) tool-error=\(Self.truncated(message), privacy: .public)")
+#endif
             throw TimenBarError.invalidResponse(message)
         }
         let text = result.content.compactMap { content -> String? in
             if case let .text(text) = content { return text }
             return nil
         }.joined(separator: "\n")
+#if DEBUG
+        logger.debug("[\(traceID, privacy: .public)] ← \(name, privacy: .public) response=\(Self.truncated(text), privacy: .public)")
+#endif
         guard !text.isEmpty else { return .object([:]) }
         if let value = Self.decodeValue(text) { return value }
         return .object(["message": .string(text)])
@@ -249,10 +301,14 @@ actor TimenMCPGateway: TimenGateway {
         var values: [SemanticArgument] = [
             SemanticArgument(names: ["note", "description"], value: .string(draft.note)),
             SemanticArgument(names: ["billable", "is_billable"], value: .bool(draft.billable)),
-            SemanticArgument(names: ["tag_ids", "tags", "tagIds"], value: .array(draft.tagIDs.map(Value.string))),
+            SemanticArgument(names: ["tag_ids", "tagIds"], value: .array(draft.tagIDs.map(Self.identifierValue))),
+            SemanticArgument(
+                names: ["tags"],
+                value: .array(draft.tagIDs.map { .string(knownTagNames[$0] ?? $0) })
+            ),
         ]
         if let projectID = draft.projectID {
-            values.append(SemanticArgument(names: ["project_id", "projectId", "project"], value: .string(projectID)))
+            values.append(SemanticArgument(names: ["project_id", "projectId", "project"], value: Self.identifierValue(projectID)))
         }
         return values
     }
@@ -286,14 +342,17 @@ actor TimenMCPGateway: TimenGateway {
     }
 
     private func parseEntry(_ value: Value) -> TimeEntry? {
-        guard let start = value.date(keys: ["start", "started_at", "start_time", "startedAt"]) else { return nil }
+        guard let start = value.date(keys: ["start", "started_at", "start_time", "startedAt", "date", "entry_date"]) else { return nil }
+        let explicitEnd = value.date(keys: ["end", "ended_at", "end_time", "endedAt"])
+        let parsedDuration = TimenDurationParser.duration(from: value)
+        let end = explicitEnd ?? parsedDuration.map { start.addingTimeInterval($0) } ?? start
         let project = value.firstObject(keys: ["project"])
         let remoteID = value.string(keys: ["id", "time_entry_id", "entry_id"])
         return TimeEntry(
             id: remoteID ?? UUID().uuidString,
             remoteID: remoteID,
             start: start,
-            end: value.date(keys: ["end", "ended_at", "end_time", "endedAt"]),
+            end: end,
             projectID: value.string(keys: ["project_id", "projectId"]) ?? project?.string(keys: ["id"]),
             projectName: value.string(keys: ["project_name"]) ?? project?.string(keys: ["name"]),
             clientName: value.string(keys: ["client_name"]) ?? project?.string(keys: ["client_name"]),
@@ -322,6 +381,29 @@ actor TimenMCPGateway: TimenGateway {
         return try? JSONDecoder().decode(Value.self, from: data)
     }
 
+    private static func identifierValue(_ raw: String) -> Value {
+        Int(raw).map(Value.int) ?? .string(raw)
+    }
+
+    private static func logJSON(_ value: [String: Value]) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let text = String(data: data, encoding: .utf8)
+        else { return "<unencodable>" }
+        return truncated(text)
+    }
+
+    private static func logJSONValue(_ value: Value) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let text = String(data: data, encoding: .utf8)
+        else { return "<unencodable>" }
+        return truncated(text)
+    }
+
+    private static func truncated(_ text: String, limit: Int = 16_000) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "…<truncated>"
+    }
+
     fileprivate static func dateString(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -346,6 +428,55 @@ actor TimenMCPGateway: TimenGateway {
 private struct SemanticArgument {
     var names: [String]
     var value: Value
+}
+
+enum TimenDurationParser {
+    private static let secondKeys = [
+        "duration_seconds", "duration_in_seconds", "elapsed_seconds", "tracked_seconds",
+        "total_seconds", "seconds", "duration", "elapsed", "time_spent", "total_time",
+    ]
+    private static let minuteKeys = ["duration_minutes", "minutes", "total_minutes"]
+    private static let hourKeys = ["duration_hours", "hours", "total_hours"]
+    private static let formattedKeys = ["formatted_duration", "duration_formatted", "duration_display"]
+
+    static func duration(from value: Value) -> TimeInterval? {
+        for key in secondKeys {
+            if let result = numericOrClock(value.firstValue(keys: [key]), multiplier: 1) { return result }
+        }
+        for key in minuteKeys {
+            if let result = numericOrClock(value.firstValue(keys: [key]), multiplier: 60) { return result }
+        }
+        for key in hourKeys {
+            if let result = numericOrClock(value.firstValue(keys: [key]), multiplier: 3_600) { return result }
+        }
+        for key in formattedKeys {
+            if let raw = value.firstValue(keys: [key])?.stringValue, let result = parseClock(raw) { return result }
+        }
+        if let durationObject = value.firstObject(keys: ["duration", "time", "totals"]) {
+            return duration(from: durationObject)
+        }
+        return nil
+    }
+
+    static func parseClock(_ raw: String) -> TimeInterval? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let number = Double(trimmed), trimmed.contains(":") == false { return max(0, number) }
+        let parts = trimmed.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 2 || parts.count == 3 else { return nil }
+        if parts.count == 2 { return max(0, parts[0] * 3_600 + parts[1] * 60) }
+        return max(0, parts[0] * 3_600 + parts[1] * 60 + parts[2])
+    }
+
+    private static func numericOrClock(_ value: Value?, multiplier: Double) -> TimeInterval? {
+        guard let value else { return nil }
+        if let int = value.intValue { return max(0, Double(int) * multiplier) }
+        if let double = value.doubleValue { return max(0, double * multiplier) }
+        if let string = value.stringValue {
+            if string.contains(":") { return parseClock(string) }
+            if let number = Double(string) { return max(0, number * multiplier) }
+        }
+        return nil
+    }
 }
 
 private extension Value {
