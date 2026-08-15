@@ -1,0 +1,64 @@
+diff --git a/Sources/MCP/Base/Transports/NetworkTransport.swift b/Sources/MCP/Base/Transports/NetworkTransport.swift
+index bfa1ea0..ce67354 100644
+--- a/Sources/MCP/Base/Transports/NetworkTransport.swift
++++ b/Sources/MCP/Base/Transports/NetworkTransport.swift
+@@ -512,9 +512,6 @@ extension NetworkTransport {
+             var messageWithNewline = message
+             messageWithNewline.append(UInt8(ascii: "\n"))
+ 
+-            // Use a local actor-isolated variable to track continuation state
+-            var sendContinuationResumed = false
+-
+             try await withCheckedThrowingContinuation {
+                 [weak self] (continuation: CheckedContinuation<Void, Swift.Error>) in
+                 guard let self = self else {
+@@ -530,9 +527,7 @@ extension NetworkTransport {
+                         guard let self = self else { return }
+ 
+                         Task { @MainActor in
+-                            if !sendContinuationResumed {
+-                                sendContinuationResumed = true
+-                                if let error = error {
++                            if let error = error {
+                                     self.logger.error("Send error: \(error)")
+ 
+                                     // Check if we should attempt to reconnect on send failure
+@@ -565,9 +560,8 @@ extension NetworkTransport {
+ 
+                                     continuation.resume(
+                                         throwing: MCPError.internalError("Send error: \(error)"))
+-                                } else {
+-                                    continuation.resume()
+-                                }
++                            } else {
++                                continuation.resume()
+                             }
+                         }
+                     })
+@@ -748,8 +742,6 @@ extension NetworkTransport {
+         /// - Throws: Network errors or connection closure
+         private func receiveData() async throws -> Data {
+-            var receiveContinuationResumed = false
+-
+             return try await withCheckedThrowingContinuation {
+                 [weak self] (continuation: CheckedContinuation<Data, Swift.Error>) in
+                 guard let self = self else {
+@@ -762,9 +754,7 @@ extension NetworkTransport {
+                 connection.receive(minimumIncompleteLength: 1, maximumLength: maxLength) {
+                     content, _, isComplete, error in
+                     Task { @MainActor in
+-                        if !receiveContinuationResumed {
+-                            receiveContinuationResumed = true
+-                            if let error = error {
++                        if let error = error {
+                                 continuation.resume(throwing: MCPError.transportError(error))
+                             } else if let content = content {
+                                 continuation.resume(returning: content)
+@@ -777,7 +767,6 @@ extension NetworkTransport {
+                                 // EOF: Resume with empty data instead of throwing an error
+                                 continuation.resume(returning: Data())
+                             }
+-                        }
+                     }
+                 }
+             }

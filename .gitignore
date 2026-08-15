@@ -1,0 +1,15 @@
+.DS_Store
+DerivedData/
+.derivedData/
+.sourcePackages/
+.packageCache/
+.modulecache/
+.cache/
+.build/
+build/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.dmg
+*.zip
+release/
