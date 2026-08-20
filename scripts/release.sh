@@ -148,7 +148,7 @@ trap handle_exit EXIT
 
 cd "$root_dir"
 
-for tool in git rg ruby xcodebuild xcrun codesign ditto shasum security; do
+for tool in git ruby xcodebuild xcrun codesign ditto shasum security grep; do
   require_command "$tool"
 done
 
@@ -185,13 +185,11 @@ current_build="$(
   die "the Xcode project must contain one consistent marketing version"
 [[ "$current_build" =~ '^[0-9]+$' ]] || \
   die "the Xcode project must contain one consistent integer build number"
-[[ "$version" != "$current_version" ]] || die "$version is already the project version"
-
 /usr/bin/ruby -e '
   require "rubygems"
-  exit(Gem::Version.new(ARGV[0]) > Gem::Version.new(ARGV[1]) ? 0 : 1)
+  exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)
 ' "$version" "$current_version" || \
-  die "new version $version must be greater than current version $current_version"
+  die "release version $version cannot be lower than current version $current_version"
 
 team_id="$(
   sed -n 's/^[[:space:]]*DEVELOPMENT_TEAM = \([^;]*\);/\1/p' "$project_file" | sort -u
@@ -202,7 +200,7 @@ if [[ -n "$configured_team_id" && "$configured_team_id" != "$team_id" ]]; then
 fi
 
 security find-identity -v -p codesigning | \
-  rg -q '"Developer ID Application: .+ \('"$team_id"'\)"' || \
+  grep -Eq '"Developer ID Application: .+ \('"$team_id"'\)"' || \
   die "no valid Developer ID Application identity found for team $team_id"
 
 [[ ! -e "$release_dir" ]] || die "release workspace already exists: $release_dir"
