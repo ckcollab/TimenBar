@@ -72,6 +72,57 @@ final class TimenMCPGatewayTests: XCTestCase {
         )
     }
 
+    func testOwnerAndAdminEntryQueriesEmitRecognizedSelfFilter() {
+        let schema = inputSchema(properties: ["member_id"])
+
+        for rawRole in ["owner", " ADMIN "] {
+            let role = TimenMCPEntryScope.normalizedRole(rawRole)
+            let arguments = TimenMCPArgumentBuilder.arguments(
+                schema: schema,
+                values: TimenMCPEntryScope.userFilterArguments(
+                    accountIdentifier: .int(42),
+                    normalizedRole: role
+                )
+            )
+
+            XCTAssertEqual(arguments["member_id"], .int(42), "role=\(rawRole)")
+            XCTAssertFalse(
+                TimenMCPEntryScope.unfilteredRequestIsCurrentUserScoped(normalizedRole: role),
+                "role=\(rawRole)"
+            )
+        }
+    }
+
+    func testMemberEntryQueryOmitsTeamMemberFilterAndUsesServerScope() {
+        let role = TimenMCPEntryScope.normalizedRole(" MEMBER ")
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["member_id"]),
+            values: TimenMCPEntryScope.userFilterArguments(
+                accountIdentifier: .int(42),
+                normalizedRole: role
+            )
+        )
+
+        XCTAssertEqual(role, "member")
+        XCTAssertTrue(arguments.isEmpty)
+        XCTAssertTrue(TimenMCPEntryScope.unfilteredRequestIsCurrentUserScoped(normalizedRole: role))
+    }
+
+    func testUnknownEntryRolesOmitFilterAndDoNotEstablishServerScope() {
+        for role in [TimenMCPEntryScope.normalizedRole(nil), TimenMCPEntryScope.normalizedRole("manager")] {
+            let arguments = TimenMCPArgumentBuilder.arguments(
+                schema: inputSchema(properties: ["member_id"]),
+                values: TimenMCPEntryScope.userFilterArguments(
+                    accountIdentifier: .int(42),
+                    normalizedRole: role
+                )
+            )
+
+            XCTAssertTrue(arguments.isEmpty)
+            XCTAssertFalse(TimenMCPEntryScope.unfilteredRequestIsCurrentUserScoped(normalizedRole: role))
+        }
+    }
+
     func testCapabilityValidationRejectsDraftToolWithoutBillableField() {
         let schema = inputSchema(properties: ["description", "project_id"])
 
@@ -224,7 +275,7 @@ final class TimenMCPGatewayTests: XCTestCase {
             try TimenMCPResponseParser.entries(
                 from: response,
                 currentAccountID: "42",
-                userFilterWasEmitted: true
+                requestWasCurrentUserScoped: true
             )
         }
     }
@@ -254,7 +305,7 @@ final class TimenMCPGatewayTests: XCTestCase {
             try TimenMCPResponseParser.entries(
                 from: response,
                 currentAccountID: "42",
-                userFilterWasEmitted: false
+                requestWasCurrentUserScoped: false
             )
         }
     }
@@ -268,30 +319,33 @@ final class TimenMCPGatewayTests: XCTestCase {
             try TimenMCPResponseParser.entries(
                 from: response,
                 currentAccountID: "42",
-                userFilterWasEmitted: true
+                requestWasCurrentUserScoped: true
             )
         }
     }
 
-    func testOwnerlessEntryIsRejectedWithoutServerFilter() throws {
+    func testOwnerlessEntryIsRejectedWhenRequestScopeIsUnknown() throws {
         let response = try ownerlessEntryResponse()
 
-        assertInvalidResponse(contains: "no recognized server-side user filter") {
+        assertInvalidResponse(contains: "not known to be scoped") {
             try TimenMCPResponseParser.entries(
                 from: response,
                 currentAccountID: "42",
-                userFilterWasEmitted: false
+                requestWasCurrentUserScoped: false
             )
         }
     }
 
-    func testOwnerlessEntryIsAcceptedWithServerFilter() throws {
+    func testOwnerlessEntryIsAcceptedForUnfilteredMemberRequest() throws {
         let response = try ownerlessEntryResponse()
+        let memberScope = TimenMCPEntryScope.unfilteredRequestIsCurrentUserScoped(
+            normalizedRole: TimenMCPEntryScope.normalizedRole("member")
+        )
 
         let entries = try TimenMCPResponseParser.entries(
             from: response,
             currentAccountID: "42",
-            userFilterWasEmitted: true
+            requestWasCurrentUserScoped: memberScope
         )
 
         XCTAssertEqual(entries.map(\.id), ["100"])
@@ -305,7 +359,7 @@ final class TimenMCPGatewayTests: XCTestCase {
         let entries = try TimenMCPResponseParser.entries(
             from: response,
             currentAccountID: "42",
-            userFilterWasEmitted: false
+            requestWasCurrentUserScoped: false
         )
 
         XCTAssertEqual(entries.map(\.id), ["100"])

@@ -30,6 +30,7 @@ actor TimenMCPGateway: TimenGateway {
     private var transport: HTTPClientTransport?
     private var schemas: [String: Value] = [:]
     private var currentAccountID: String?
+    private var currentAccountRole: String?
     private var knownTagNames: [String: String] = [:]
 
     init(oauth: OAuthSession = OAuthSession()) {
@@ -50,6 +51,7 @@ actor TimenMCPGateway: TimenGateway {
         transport = nil
         schemas = [:]
         currentAccountID = nil
+        currentAccountRole = nil
         knownTagNames = [:]
         try await oauth.signOut()
     }
@@ -81,9 +83,11 @@ actor TimenMCPGateway: TimenGateway {
 
     func account() async throws -> TimenAccount {
         currentAccountID = nil
+        currentAccountRole = nil
         let value = try await call("timen_get_me")
         let account = try TimenMCPResponseParser.account(from: value)
         currentAccountID = account.id
+        currentAccountRole = TimenMCPEntryScope.normalizedRole(account.role)
         return account
     }
 
@@ -113,26 +117,23 @@ actor TimenMCPGateway: TimenGateway {
             SemanticArgument(names: ["start_date", "from", "start", "from_date"], value: .string(Self.dayString(from))),
             SemanticArgument(names: ["end_date", "to", "end", "to_date"], value: .string(Self.dayString(to))),
         ]
-        let identifierValue = Self.identifierValue(currentAccountID)
-        filters.append(SemanticArgument(
-            names: ["user_id", "member_id", "person_id", "owner_id"],
-            value: identifierValue
-        ))
-        filters.append(SemanticArgument(
-            names: ["user_ids", "member_ids", "person_ids", "owner_ids"],
-            value: .array([identifierValue])
-        ))
+        filters += TimenMCPEntryScope.userFilterArguments(
+            accountIdentifier: Self.identifierValue(currentAccountID),
+            normalizedRole: currentAccountRole
+        )
         let arguments = arguments(for: "timen_list_time_entries", values: filters)
         let userFilterWasEmitted = emittedRecognizedArgument(
             for: "timen_list_time_entries",
             arguments: arguments,
             names: TimenMCPResponseParser.userFilterArgumentNames
         )
+        let requestWasCurrentUserScoped = userFilterWasEmitted
+            || TimenMCPEntryScope.unfilteredRequestIsCurrentUserScoped(normalizedRole: currentAccountRole)
         let value = try await call("timen_list_time_entries", arguments: arguments)
         return try TimenMCPResponseParser.entries(
             from: value,
             currentAccountID: currentAccountID,
-            userFilterWasEmitted: userFilterWasEmitted
+            requestWasCurrentUserScoped: requestWasCurrentUserScoped
         )
     }
 
@@ -388,6 +389,38 @@ actor TimenMCPGateway: TimenGateway {
 struct SemanticArgument {
     var names: [String]
     var value: Value
+}
+
+enum TimenMCPEntryScope {
+    private static let teamWideRoles: Set<String> = ["admin", "owner"]
+
+    static func normalizedRole(_ role: String?) -> String? {
+        guard let normalized = role?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !normalized.isEmpty
+        else { return nil }
+        return normalized
+    }
+
+    static func userFilterArguments(
+        accountIdentifier: Value,
+        normalizedRole: String?
+    ) -> [SemanticArgument] {
+        guard let normalizedRole, teamWideRoles.contains(normalizedRole) else { return [] }
+        return [
+            SemanticArgument(
+                names: ["user_id", "member_id", "person_id", "owner_id"],
+                value: accountIdentifier
+            ),
+            SemanticArgument(
+                names: ["user_ids", "member_ids", "person_ids", "owner_ids"],
+                value: .array([accountIdentifier])
+            ),
+        ]
+    }
+
+    static func unfilteredRequestIsCurrentUserScoped(normalizedRole: String?) -> Bool {
+        normalizedRole == "member"
+    }
 }
 
 enum TimenMCPArgumentBuilder {
@@ -680,7 +713,7 @@ enum TimenMCPResponseParser {
     static func entries(
         from response: Value,
         currentAccountID: String,
-        userFilterWasEmitted: Bool
+        requestWasCurrentUserScoped: Bool
     ) throws -> [TimeEntry] {
         guard !currentAccountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TimenBarError.invalidResponse("Cannot verify time-entry ownership without an account ID.")
@@ -696,7 +729,7 @@ enum TimenMCPResponseParser {
                 try validateOwnership(
                     of: item,
                     currentAccountID: currentAccountID,
-                    userFilterWasEmitted: userFilterWasEmitted
+                    requestWasCurrentUserScoped: requestWasCurrentUserScoped
                 )
                 let parsed = try entry(from: item)
                 guard seenIDs.insert(parsed.id).inserted else {
@@ -785,7 +818,7 @@ enum TimenMCPResponseParser {
     private static func validateOwnership(
         of value: Value,
         currentAccountID: String,
-        userFilterWasEmitted: Bool
+        requestWasCurrentUserScoped: Bool
     ) throws {
         guard let object = value.objectValue else {
             throw TimenBarError.invalidResponse("Time entry was not an object.")
@@ -807,9 +840,9 @@ enum TimenMCPResponseParser {
         }
 
         if ownerIDs.isEmpty {
-            guard userFilterWasEmitted else {
+            guard requestWasCurrentUserScoped else {
                 throw TimenBarError.invalidResponse(
-                    "Time entry omitted owner metadata and no recognized server-side user filter was emitted."
+                    "Time entry omitted owner metadata and the request was not known to be scoped to the current account."
                 )
             }
             return
