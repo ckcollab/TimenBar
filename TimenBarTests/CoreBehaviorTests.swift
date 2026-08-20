@@ -1,4 +1,5 @@
 import CryptoKit
+import SwiftData
 import XCTest
 @testable import TimenBar
 
@@ -131,4 +132,287 @@ final class CoreBehaviorTests: XCTestCase {
 
         XCTAssertEqual([updatedOlder, newer].sorted(by: TimeEntry.newestCreatedFirst).map(\.id), ["101", "100"])
     }
+}
+
+@MainActor
+final class AppModelAccountIsolationTests: XCTestCase {
+    func testSuccessfulAccountChangePublishesOnlyNewAccountState() async throws {
+        let container = try makeContainer()
+        let accountA = account(id: "account-a")
+        let accountB = account(id: "account-b")
+        let projectA = TimenProject(id: "shared-project", name: "Account A Project", clientName: "A")
+        let projectB = TimenProject(id: "shared-project", name: "Account B Project", clientName: "B")
+        let entryA = entry(id: "shared-entry", project: projectA, note: "Account A entry")
+        let entryB = entry(id: "shared-entry", project: projectB, note: "Account B entry")
+        let favoriteA = Favorite(
+            id: UUID(), name: projectA.name, projectID: projectA.id,
+            tagIDs: [], note: "", billable: true, sortOrder: 0
+        )
+        let store = OfflineStore(container: container)
+        _ = try store.prepareForAccount(accountA)
+        try store.replaceProjects([projectA])
+        try store.replaceTags([TimenTag(id: "account-a-tag", name: "A Tag")])
+        try store.upsertEntries([entryA])
+        try store.saveFavorite(favoriteA)
+
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        seedFocusedState(entryA, accountID: accountA.id, defaults: defaults)
+        let gateway = AccountLifecycleGateway(
+            account: accountB,
+            projects: [projectB],
+            tags: [TimenTag(id: "account-b-tag", name: "B Tag")],
+            entries: [entryB]
+        )
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+        XCTAssertEqual(model.projects, [projectA])
+        XCTAssertEqual(model.quickStartEntry?.note, entryA.note)
+        model.presentNewTimer()
+        XCTAssertNotNil(model.composerMode)
+
+        await model.signIn()
+
+        XCTAssertEqual(model.authenticationState, .signedIn)
+        XCTAssertEqual(model.account, accountB)
+        XCTAssertEqual(model.projects, [projectB])
+        XCTAssertEqual(model.tags.map(\.id), ["account-b-tag"])
+        XCTAssertEqual(model.entries, [entryB])
+        XCTAssertTrue(model.favorites.isEmpty)
+        XCTAssertEqual(model.quickStartEntry?.note, entryB.note)
+        XCTAssertEqual(defaults.string(forKey: "accountScopedStateAccountID"), accountB.id)
+        XCTAssertNil(model.composerMode)
+
+        await model.startFavorite(favoriteA)
+        await model.startTimer(
+            TimerDraft(projectID: projectA.id, tagIDs: [], note: "Account A draft", billable: true),
+            source: "timer-composer"
+        )
+        let startCalls = await gateway.startTimerCallCount()
+        XCTAssertEqual(startCalls, 0)
+        XCTAssertEqual(try store.cachedAccount(), accountB)
+        XCTAssertEqual(try store.projects(), [projectB])
+        XCTAssertEqual(try store.entries(from: .distantPast, to: .distantFuture), [entryB])
+    }
+
+    func testFailedInitialRefreshDoesNotExposePreviousAccountCache() async throws {
+        let container = try makeContainer()
+        let accountA = account(id: "account-a")
+        let accountB = account(id: "account-b")
+        let projectA = TimenProject(id: "p", name: "Account A Project", clientName: "A")
+        let entryA = entry(id: "entry", project: projectA, note: "Account A entry")
+        let favoriteA = Favorite(
+            id: UUID(), name: projectA.name, projectID: projectA.id,
+            tagIDs: [], note: "", billable: true, sortOrder: 0
+        )
+        let store = OfflineStore(container: container)
+        _ = try store.prepareForAccount(accountA)
+        try store.replaceProjects([projectA])
+        try store.replaceTags([TimenTag(id: "tag", name: "Account A Tag")])
+        try store.upsertEntries([entryA])
+        try store.saveFavorite(favoriteA)
+
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        seedFocusedState(entryA, accountID: accountA.id, defaults: defaults)
+        let gateway = AccountLifecycleGateway(
+            account: accountB,
+            projects: [],
+            tags: [],
+            entries: [],
+            failProjects: true
+        )
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+
+        XCTAssertEqual(model.authenticationState, .signedOut)
+        XCTAssertNil(model.account)
+        XCTAssertTrue(model.projects.isEmpty)
+        XCTAssertTrue(model.tags.isEmpty)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertTrue(model.favorites.isEmpty)
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.focusedEntryID)
+        XCTAssertNil(model.quickStartEntry)
+        XCTAssertNil(model.lastTimerDraft)
+        XCTAssertNil(defaults.string(forKey: "accountScopedStateAccountID"))
+        XCTAssertEqual(try store.cachedAccount(), accountB)
+        XCTAssertTrue(try store.projects().isEmpty)
+        XCTAssertTrue(try store.tags().isEmpty)
+        XCTAssertTrue(try store.entries(from: .distantPast, to: .distantFuture).isEmpty)
+        XCTAssertTrue(try store.favorites().isEmpty)
+
+        await model.startFavorite(favoriteA)
+        let startCalls = await gateway.startTimerCallCount()
+        XCTAssertEqual(startCalls, 0)
+    }
+
+    func testLogoutClearsPersistentAndFocusedAccountState() async throws {
+        let container = try makeContainer()
+        let accountA = account(id: "account-a")
+        let projectA = TimenProject(id: "p", name: "Account A Project", clientName: "A")
+        let entryA = entry(id: "entry", project: projectA, note: "Account A entry")
+        let store = OfflineStore(container: container)
+        _ = try store.prepareForAccount(accountA)
+        try store.replaceProjects([projectA])
+        try store.upsertEntries([entryA])
+        try store.saveFavorite(Favorite(
+            id: UUID(), name: projectA.name, projectID: projectA.id,
+            tagIDs: [], note: "", billable: true, sortOrder: 0
+        ))
+
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        seedFocusedState(entryA, accountID: accountA.id, defaults: defaults)
+        let gateway = AccountLifecycleGateway(account: accountA, projects: [], tags: [], entries: [])
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+        model.authenticationState = .signedIn
+
+        await model.signOut()
+
+        XCTAssertEqual(model.authenticationState, .signedOut)
+        XCTAssertNil(model.account)
+        XCTAssertTrue(model.projects.isEmpty)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertTrue(model.favorites.isEmpty)
+        XCTAssertNil(model.focusedEntryID)
+        XCTAssertNil(model.quickStartEntry)
+        XCTAssertNil(defaults.string(forKey: "accountScopedStateAccountID"))
+        XCTAssertNil(try store.cachedAccount())
+        XCTAssertTrue(try store.projects().isEmpty)
+        XCTAssertTrue(try store.entries(from: .distantPast, to: .distantFuture).isEmpty)
+        XCTAssertTrue(try store.favorites().isEmpty)
+    }
+
+    private func makeContainer() throws -> ModelContainer {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        return try ModelContainer(for: Schema(PersistenceSchema.models), configurations: [configuration])
+    }
+
+    private func makeModel(
+        container: ModelContainer,
+        gateway: AccountLifecycleGateway,
+        defaults: UserDefaults
+    ) -> AppModel {
+        AppModel(
+            container: container,
+            gateway: gateway,
+            settings: AppSettings(defaults: defaults),
+            connectivity: ConnectivityMonitor(initiallyOnline: true, startMonitoring: false),
+            defaults: defaults,
+            startAutomatically: false
+        )
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let name = "AppModelAccountIsolationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.set(name, forKey: "testSuiteName")
+        return defaults
+    }
+
+    private func defaultsSuiteName(_ defaults: UserDefaults) -> String {
+        defaults.string(forKey: "testSuiteName") ?? "AppModelAccountIsolationTests"
+    }
+
+    private func seedFocusedState(_ entry: TimeEntry, accountID: String, defaults: UserDefaults) {
+        defaults.set(accountID, forKey: "accountScopedStateAccountID")
+        defaults.set(entry.remoteID, forKey: "focusedEntryID")
+        defaults.set(try? JSONEncoder().encode(entry), forKey: "focusedEntrySnapshot")
+        defaults.set(try? JSONEncoder().encode(TimerDraft(
+            projectID: entry.projectID,
+            tagIDs: entry.tags.map(\.id),
+            note: entry.note,
+            billable: true
+        )), forKey: "lastTimerDraft")
+    }
+
+    private func account(id: String) -> TimenAccount {
+        TimenAccount(
+            id: id, name: id, email: "\(id)@example.com", teamName: "Team \(id)",
+            role: "member", timeZoneIdentifier: "UTC"
+        )
+    }
+
+    private func entry(id: String, project: TimenProject, note: String) -> TimeEntry {
+        TimeEntry(
+            id: id,
+            remoteID: id,
+            start: .now.addingTimeInterval(-600),
+            end: .now,
+            projectID: project.id,
+            projectName: project.name,
+            clientName: project.clientName,
+            note: note,
+            tags: [],
+            billable: true,
+            syncState: .synced
+        )
+    }
+}
+
+private enum AccountLifecycleGatewayError: Error {
+    case projectsUnavailable
+    case unsupportedMutation
+}
+
+private actor AccountLifecycleGateway: TimenGateway {
+    private let currentAccount: TimenAccount
+    private let projectValues: [TimenProject]
+    private let tagValues: [TimenTag]
+    private let entryValues: [TimeEntry]
+    private let failProjects: Bool
+    private var startCalls = 0
+
+    init(
+        account: TimenAccount,
+        projects: [TimenProject],
+        tags: [TimenTag],
+        entries: [TimeEntry],
+        failProjects: Bool = false
+    ) {
+        currentAccount = account
+        projectValues = projects
+        tagValues = tags
+        entryValues = entries
+        self.failProjects = failProjects
+    }
+
+    func startTimerCallCount() -> Int { startCalls }
+    func isAuthenticated() async -> Bool { true }
+    func authenticate() async throws {}
+    func signOut() async throws {}
+    func validateCapabilities() async throws {}
+    func account() async throws -> TimenAccount { currentAccount }
+    func runningTimer() async throws -> RunningTimer? { nil }
+    func projects() async throws -> [TimenProject] {
+        if failProjects { throw AccountLifecycleGatewayError.projectsUnavailable }
+        return projectValues
+    }
+    func tags() async throws -> [TimenTag] { tagValues }
+    func entries(from _: Date, to _: Date) async throws -> [TimeEntry] { entryValues }
+    func startTimer(_ draft: TimerDraft) async throws -> RunningTimer {
+        startCalls += 1
+        return RunningTimer(
+            id: "timer", remoteID: "timer", startedAt: .now,
+            projectID: draft.projectID, projectName: nil, clientName: nil,
+            note: draft.note, tags: [], billable: true, syncState: .synced
+        )
+    }
+    func stopTimer() async throws -> TimeEntry { throw AccountLifecycleGatewayError.unsupportedMutation }
+    func logTime(start _: Date, end _: Date, draft _: TimerDraft) async throws -> TimeEntry {
+        throw AccountLifecycleGatewayError.unsupportedMutation
+    }
+    func updateEntry(
+        id _: String,
+        draft _: TimerDraft,
+        start _: Date?,
+        end _: Date?
+    ) async throws -> TimeEntry {
+        throw AccountLifecycleGatewayError.unsupportedMutation
+    }
+    func updateEntryDuration(id _: String, draft _: TimerDraft, duration _: TimeInterval) async throws -> TimeEntry {
+        throw AccountLifecycleGatewayError.unsupportedMutation
+    }
+    func deleteEntry(id _: String) async throws { throw AccountLifecycleGatewayError.unsupportedMutation }
 }

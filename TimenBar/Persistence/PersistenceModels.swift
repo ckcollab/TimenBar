@@ -2,6 +2,25 @@ import Foundation
 import SwiftData
 
 @Model
+final class CachedAccountRecord {
+    @Attribute(.unique) var id: String
+    var accountID: String
+    var accountData: Data
+    var updatedAt: Date
+
+    init(account: TimenAccount) {
+        id = "current"
+        accountID = account.id
+        accountData = (try? JSONEncoder().encode(account)) ?? Data()
+        updatedAt = .now
+    }
+
+    var domain: TimenAccount? {
+        try? JSONDecoder().decode(TimenAccount.self, from: accountData)
+    }
+}
+
+@Model
 final class CachedProject {
     @Attribute(.unique) var id: String
     var name: String
@@ -92,9 +111,9 @@ final class FavoriteRecord {
         id = favorite.id
         name = favorite.name
         projectID = favorite.projectID
-        tagIDsData = (try? JSONEncoder().encode(favorite.tagIDs)) ?? Data()
-        note = favorite.note
-        billable = favorite.billable
+        tagIDsData = (try? JSONEncoder().encode([String]())) ?? Data()
+        note = ""
+        billable = true
         sortOrder = favorite.sortOrder
     }
 
@@ -103,9 +122,9 @@ final class FavoriteRecord {
             id: id,
             name: name,
             projectID: projectID,
-            tagIDs: (try? JSONDecoder().decode([String].self, from: tagIDsData)) ?? [],
-            note: note,
-            billable: billable,
+            tagIDs: [],
+            note: "",
+            billable: true,
             sortOrder: sortOrder
         )
     }
@@ -113,6 +132,8 @@ final class FavoriteRecord {
 
 @Model
 final class OutboxRecord {
+    // Legacy schema only. Keeping this model lets pre-release stores open long
+    // enough to discard abandoned offline mutations without risking favorites.
     @Attribute(.unique) var id: UUID
     var sequence: Int64
     var kindRaw: String
@@ -123,38 +144,33 @@ final class OutboxRecord {
     var createdAt: Date
     var lastError: String?
 
-    init(mutation: QueuedMutation) {
-        id = mutation.id
-        sequence = mutation.sequence
-        kindRaw = mutation.kind.rawValue
-        entryID = mutation.entryID
-        payload = mutation.payload
-        stateRaw = mutation.state.rawValue
-        attempts = mutation.attempts
-        createdAt = mutation.createdAt
-        lastError = mutation.lastError
+    init(
+        id: UUID,
+        sequence: Int64,
+        kindRaw: String,
+        entryID: String?,
+        payload: Data,
+        stateRaw: String,
+        attempts: Int,
+        createdAt: Date,
+        lastError: String?
+    ) {
+        self.id = id
+        self.sequence = sequence
+        self.kindRaw = kindRaw
+        self.entryID = entryID
+        self.payload = payload
+        self.stateRaw = stateRaw
+        self.attempts = attempts
+        self.createdAt = createdAt
+        self.lastError = lastError
     }
 
-    var domain: QueuedMutation? {
-        guard let kind = OutboxMutationKind(rawValue: kindRaw),
-              let state = OutboxMutationState(rawValue: stateRaw)
-        else { return nil }
-        return QueuedMutation(
-            id: id,
-            sequence: sequence,
-            kind: kind,
-            entryID: entryID,
-            payload: payload,
-            state: state,
-            attempts: attempts,
-            createdAt: createdAt,
-            lastError: lastError
-        )
-    }
 }
 
 @Model
 final class ConflictRecord {
+    // Legacy schema only; see OutboxRecord.
     @Attribute(.unique) var id: UUID
     var mutationID: UUID
     var title: String
@@ -163,27 +179,24 @@ final class ConflictRecord {
     var remoteSummary: String
     var createdAt: Date
 
-    init(conflict: SyncConflict) {
-        id = conflict.id
-        mutationID = conflict.mutationID
-        title = conflict.title
-        explanation = conflict.explanation
-        localSummary = conflict.localSummary
-        remoteSummary = conflict.remoteSummary
-        createdAt = conflict.createdAt
+    init(
+        id: UUID,
+        mutationID: UUID,
+        title: String,
+        explanation: String,
+        localSummary: String,
+        remoteSummary: String,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.mutationID = mutationID
+        self.title = title
+        self.explanation = explanation
+        self.localSummary = localSummary
+        self.remoteSummary = remoteSummary
+        self.createdAt = createdAt
     }
 
-    var domain: SyncConflict {
-        SyncConflict(
-            id: id,
-            mutationID: mutationID,
-            title: title,
-            explanation: explanation,
-            localSummary: localSummary,
-            remoteSummary: remoteSummary,
-            createdAt: createdAt
-        )
-    }
 }
 
 @Model
@@ -194,7 +207,7 @@ final class PendingSegmentRecord {
     var draftData: Data
     var remoteTimerID: String?
 
-    init(segment: PendingTimerSegment) {
+    init(segment: ActiveTimerSegment) {
         id = segment.id
         startedAt = segment.startedAt
         endedAt = segment.endedAt
@@ -202,9 +215,9 @@ final class PendingSegmentRecord {
         remoteTimerID = segment.remoteTimerID
     }
 
-    var domain: PendingTimerSegment? {
+    var domain: ActiveTimerSegment? {
         guard let draft = try? JSONDecoder().decode(TimerDraft.self, from: draftData) else { return nil }
-        return PendingTimerSegment(
+        return ActiveTimerSegment(
             id: id,
             startedAt: startedAt,
             endedAt: endedAt,
@@ -213,4 +226,3 @@ final class PendingSegmentRecord {
         )
     }
 }
-

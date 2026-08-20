@@ -4,7 +4,7 @@
 
 OAuth is a native public-client flow with discovery, dynamic registration, loopback callback, state validation, PKCE S256, refresh, revocation, and Keychain-only secret storage.
 
-SwiftData persists remote caches and local-only favorites, active timer segments, ordered outbox mutations, and conflicts. UI actions update the cache before network work. Replay proceeds by sequence, reconciles ambiguous responses by re-reading Timen, and sends anything not provably identical to Conflict Review.
+SwiftData persists server-backed project, tag, and entry caches, local favorite-project choices, and the active remote timer or continuation segment. The cache is bound to one Timen account; logout or a detected account change clears all account-owned records before another account can use it. Mutating UI actions require connectivity and update Timen before the local cache. No mutations are queued or replayed while offline; reconnecting refreshes the server-backed cache.
 
 Idle detection uses `CGEventSource.secondsSinceLastEventType` plus workspace sleep, wake, and session notifications. The timer continues while the decision sheet is open.
 

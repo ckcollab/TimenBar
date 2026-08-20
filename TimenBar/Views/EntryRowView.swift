@@ -10,7 +10,9 @@ struct EntryRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
-                syncIndicator
+                Capsule()
+                    .fill(TimenBarTheme.accent.opacity(0.65))
+                    .frame(width: 3, height: 42)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.projectName ?? "Unassigned")
                         .font(.headline)
@@ -67,21 +69,7 @@ struct EntryRowView: View {
         .confirmationDialog("Delete this time entry?", isPresented: $confirmDelete) {
             Button("Delete Entry", role: .destructive) { Task { await appModel.deleteEntry(entry) } }
         } message: {
-            Text("The deletion will be synchronized with Timen and cannot be undone there.")
-        }
-    }
-
-    @ViewBuilder
-    private var syncIndicator: some View {
-        switch entry.syncState {
-        case .synced:
-            Capsule().fill(TimenBarTheme.accent.opacity(0.65)).frame(width: 3, height: 42)
-        case .pending, .sending:
-            Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
-        case .conflict:
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-        case .failed:
-            Image(systemName: "wifi.exclamationmark").foregroundStyle(.red)
+            Text("The entry will be deleted from Timen and cannot be undone.")
         }
     }
 }

@@ -69,7 +69,7 @@ add_package(
   project,
   app_target,
   "https://github.com/modelcontextprotocol/swift-sdk.git",
-  { "kind" => "exactVersion", "version" => "0.11.0" },
+  { "kind" => "exactVersion", "version" => "0.12.1" },
   "MCP"
 )
 add_package(

@@ -1,6 +1,26 @@
 import Foundation
 import SwiftData
 
+enum CacheAccountTransition: Equatable {
+    case initialized
+    case unchanged
+    case changed
+}
+
+enum OfflineStoreError: LocalizedError, Equatable {
+    case accountNotBound
+    case favoriteRequiresProject
+
+    var errorDescription: String? {
+        switch self {
+        case .accountNotBound:
+            "The local cache is not bound to a Timen account."
+        case .favoriteRequiresProject:
+            "Favorites must reference a project."
+        }
+    }
+}
+
 @MainActor
 final class OfflineStore {
     private let context: ModelContext
@@ -11,12 +31,52 @@ final class OfflineStore {
         context.autosaveEnabled = false
     }
 
+    func cachedAccount() throws -> TimenAccount? {
+        try accountRecord()?.domain
+    }
+
+    /// Binds the single-account cache to `account`. Any unowned legacy data or
+    /// data belonging to another account is removed before the new identity is
+    /// persisted, so remote identifiers can never collide across accounts.
+    @discardableResult
+    func prepareForAccount(_ account: TimenAccount) throws -> CacheAccountTransition {
+        let existing = try accountRecord()
+        let transition: CacheAccountTransition
+        if let existing {
+            if existing.accountID == account.id {
+                transition = .unchanged
+            } else {
+                try clearCachedContent()
+                transition = .changed
+            }
+            existing.accountID = account.id
+            existing.accountData = try encoder.encode(account)
+            existing.updatedAt = .now
+        } else {
+            // Data written before account binding was introduced has no
+            // trustworthy owner and must not be adopted by the current login.
+            try clearCachedContent()
+            context.insert(CachedAccountRecord(account: account))
+            transition = .initialized
+        }
+        try context.save()
+        return transition
+    }
+
+    func clearAccountData() throws {
+        try clearCachedContent()
+        try context.fetch(FetchDescriptor<CachedAccountRecord>()).forEach(context.delete)
+        try context.save()
+    }
+
     func projects() throws -> [TimenProject] {
+        guard try hasAccountBinding() else { return [] }
         let values = try context.fetch(FetchDescriptor<CachedProject>(sortBy: [SortDescriptor(\.name)]))
         return values.map { TimenProject(id: $0.id, name: $0.name, clientName: $0.clientName, isActive: $0.isActive) }
     }
 
     func replaceProjects(_ projects: [TimenProject]) throws {
+        try requireAccountBinding()
         let existing = try context.fetch(FetchDescriptor<CachedProject>())
         existing.forEach(context.delete)
         projects.forEach { context.insert(CachedProject(id: $0.id, name: $0.name, clientName: $0.clientName, isActive: $0.isActive)) }
@@ -24,11 +84,13 @@ final class OfflineStore {
     }
 
     func tags() throws -> [TimenTag] {
-        try context.fetch(FetchDescriptor<CachedTag>(sortBy: [SortDescriptor(\.name)]))
+        guard try hasAccountBinding() else { return [] }
+        return try context.fetch(FetchDescriptor<CachedTag>(sortBy: [SortDescriptor(\.name)]))
             .map { TimenTag(id: $0.id, name: $0.name) }
     }
 
     func replaceTags(_ tags: [TimenTag]) throws {
+        try requireAccountBinding()
         let existing = try context.fetch(FetchDescriptor<CachedTag>())
         existing.forEach(context.delete)
         tags.forEach { context.insert(CachedTag(id: $0.id, name: $0.name)) }
@@ -36,14 +98,18 @@ final class OfflineStore {
     }
 
     func entries(from start: Date, to end: Date) throws -> [TimeEntry] {
+        guard try hasAccountBinding() else { return [] }
         let descriptor = FetchDescriptor<CachedEntry>(
             predicate: #Predicate { $0.start >= start && $0.start < end },
             sortBy: [SortDescriptor(\.start, order: .reverse)]
         )
-        return try context.fetch(descriptor).map(\.domain)
+        return try context.fetch(descriptor)
+            .filter { $0.syncStateRaw == SyncState.synced.rawValue }
+            .map(\.domain)
     }
 
     func upsertEntries(_ entries: [TimeEntry]) throws {
+        try requireAccountBinding()
         for entry in entries {
             let id = entry.id
             var descriptor = FetchDescriptor<CachedEntry>(predicate: #Predicate { $0.id == id })
@@ -67,39 +133,27 @@ final class OfflineStore {
         try context.save()
     }
 
-    func replaceSyncedEntries(_ entries: [TimeEntry], from start: Date, to end: Date) throws {
+    func replaceEntries(_ entries: [TimeEntry], from start: Date, to end: Date) throws {
+        try requireAccountBinding()
         let descriptor = FetchDescriptor<CachedEntry>(predicate: #Predicate {
             $0.start >= start && $0.start < end
         })
-        let oldSyncedEntries = try context.fetch(descriptor).filter { $0.syncStateRaw == SyncState.synced.rawValue }
-        oldSyncedEntries.forEach(context.delete)
-        try context.save()
+        try context.fetch(descriptor).forEach(context.delete)
         try upsertEntries(entries)
     }
 
     func deleteEntry(id: String) throws {
+        try requireAccountBinding()
         let entryID = id
         let descriptor = FetchDescriptor<CachedEntry>(predicate: #Predicate { $0.id == entryID })
         try context.fetch(descriptor).forEach(context.delete)
         try context.save()
     }
 
-    func discardLocalEntryAndMutations(entryID: String) throws {
-        let localEntryID = entryID
-        let entryDescriptor = FetchDescriptor<CachedEntry>(predicate: #Predicate { $0.id == localEntryID })
-        try context.fetch(entryDescriptor).forEach(context.delete)
-
-        let mutationDescriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate { $0.entryID == localEntryID })
-        let mutations = try context.fetch(mutationDescriptor)
-        let mutationIDs = Set(mutations.map(\.id))
-        mutations.forEach(context.delete)
-
-        let conflicts = try context.fetch(FetchDescriptor<ConflictRecord>())
-        conflicts.filter { mutationIDs.contains($0.mutationID) }.forEach(context.delete)
-        try context.save()
-    }
-
-    func discardAllQueuedWork() throws {
+    /// One-time compatibility cleanup for stores created by builds that
+    /// experimented with queued offline mutations. The legacy model types stay
+    /// in the schema so SwiftData can open those stores safely.
+    func discardLegacyOfflineMutationState() throws {
         try context.fetch(FetchDescriptor<OutboxRecord>()).forEach(context.delete)
         try context.fetch(FetchDescriptor<ConflictRecord>()).forEach(context.delete)
         try context.fetch(FetchDescriptor<CachedEntry>())
@@ -112,126 +166,92 @@ final class OfflineStore {
     }
 
     func favorites() throws -> [Favorite] {
-        try context.fetch(FetchDescriptor<FavoriteRecord>(sortBy: [SortDescriptor(\.sortOrder)]))
+        guard try hasAccountBinding() else { return [] }
+        return try context.fetch(FetchDescriptor<FavoriteRecord>(sortBy: [SortDescriptor(\.sortOrder)]))
             .map(\.domain)
     }
 
+    /// Converts legacy "favorite timer" records to project-only favorites,
+    /// removes invalid/duplicate projects, and updates names from the current
+    /// account's project list. Legacy columns remain in the schema so existing
+    /// stores continue to migrate safely.
+    @discardableResult
+    func reconcileFavorites(with projects: [TimenProject]) throws -> [Favorite] {
+        try requireAccountBinding()
+        let projectsByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        let records = try context.fetch(FetchDescriptor<FavoriteRecord>(sortBy: [SortDescriptor(\.sortOrder)]))
+        var seenProjectIDs = Set<String>()
+        var retained: [FavoriteRecord] = []
+
+        for record in records {
+            guard let projectID = record.projectID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !projectID.isEmpty,
+                  let project = projectsByID[projectID],
+                  seenProjectIDs.insert(projectID).inserted
+            else {
+                context.delete(record)
+                continue
+            }
+            record.projectID = projectID
+            record.name = project.name
+            record.tagIDsData = try encoder.encode([String]())
+            record.note = ""
+            record.billable = true
+            record.sortOrder = retained.count
+            retained.append(record)
+        }
+        try context.save()
+        return retained.map(\.domain)
+    }
+
     func saveFavorite(_ favorite: Favorite) throws {
+        try requireAccountBinding()
+        guard let projectID = favorite.projectID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectID.isEmpty
+        else { throw OfflineStoreError.favoriteRequiresProject }
         let favoriteID = favorite.id
         var descriptor = FetchDescriptor<FavoriteRecord>(predicate: #Predicate { $0.id == favoriteID })
         descriptor.fetchLimit = 1
         if let record = try context.fetch(descriptor).first {
             record.name = favorite.name
-            record.projectID = favorite.projectID
-            record.tagIDsData = (try? encoder.encode(favorite.tagIDs)) ?? Data()
-            record.note = favorite.note
-            record.billable = favorite.billable
+            record.projectID = projectID
+            record.tagIDsData = try encoder.encode([String]())
+            record.note = ""
+            record.billable = true
             record.sortOrder = favorite.sortOrder
         } else {
-            context.insert(FavoriteRecord(favorite: favorite))
+            var normalized = favorite
+            normalized.projectID = projectID
+            normalized.tagIDs = []
+            normalized.note = ""
+            normalized.billable = true
+            context.insert(FavoriteRecord(favorite: normalized))
         }
         try context.save()
     }
 
     func deleteFavorite(id: UUID) throws {
+        try requireAccountBinding()
         let favoriteID = id
         let descriptor = FetchDescriptor<FavoriteRecord>(predicate: #Predicate { $0.id == favoriteID })
         try context.fetch(descriptor).forEach(context.delete)
         try context.save()
     }
 
-    func enqueue(kind: OutboxMutationKind, entryID: String?, payload: some Encodable) throws -> QueuedMutation {
-        let descriptor = FetchDescriptor<OutboxRecord>(sortBy: [SortDescriptor(\.sequence, order: .reverse)])
-        let nextSequence = (try context.fetch(descriptor).first?.sequence ?? 0) + 1
-        let mutation = QueuedMutation(
-            id: UUID(),
-            sequence: nextSequence,
-            kind: kind,
-            entryID: entryID,
-            payload: try encoder.encode(payload),
-            state: .pending,
-            attempts: 0,
-            createdAt: .now,
-            lastError: nil
-        )
-        context.insert(OutboxRecord(mutation: mutation))
-        try context.save()
-        return mutation
-    }
-
-    func pendingMutations() throws -> [QueuedMutation] {
-        let descriptor = FetchDescriptor<OutboxRecord>(
-            predicate: #Predicate { $0.stateRaw == "pending" || $0.stateRaw == "failed" },
-            sortBy: [SortDescriptor(\.sequence)]
-        )
-        return try context.fetch(descriptor).compactMap(\.domain)
-    }
-
-    func mutation(id: UUID) throws -> QueuedMutation? {
-        let mutationID = id
-        var descriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate { $0.id == mutationID })
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first?.domain
-    }
-
-    func cancelPendingStart(entryID: String) throws {
-        let localEntryID = entryID
-        let descriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate {
-            $0.entryID == localEntryID && $0.kindRaw == "startTimer"
-        })
-        let cancellable = try context.fetch(descriptor).filter {
-            $0.stateRaw == OutboxMutationState.pending.rawValue || $0.stateRaw == OutboxMutationState.failed.rawValue
-        }
-        cancellable.forEach(context.delete)
-        try context.save()
-    }
-
-    func setMutation(_ id: UUID, state: OutboxMutationState, error: String? = nil) throws {
-        let mutationID = id
-        var descriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate { $0.id == mutationID })
-        descriptor.fetchLimit = 1
-        guard let record = try context.fetch(descriptor).first else { return }
-        record.stateRaw = state.rawValue
-        record.lastError = error
-        if state == .sending { record.attempts += 1 }
-        try context.save()
-    }
-
-    func removeAppliedMutations() throws {
-        let descriptor = FetchDescriptor<OutboxRecord>(predicate: #Predicate { $0.stateRaw == "applied" })
-        try context.fetch(descriptor).forEach(context.delete)
-        try context.save()
-    }
-
-    func conflicts() throws -> [SyncConflict] {
-        try context.fetch(FetchDescriptor<ConflictRecord>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))
-            .map(\.domain)
-    }
-
-    func addConflict(_ conflict: SyncConflict) throws {
-        context.insert(ConflictRecord(conflict: conflict))
-        try setMutation(conflict.mutationID, state: .needsReview, error: conflict.explanation)
-        try context.save()
-    }
-
-    func resolveConflict(id: UUID) throws {
-        let conflictID = id
-        let descriptor = FetchDescriptor<ConflictRecord>(predicate: #Predicate { $0.id == conflictID })
-        try context.fetch(descriptor).forEach(context.delete)
-        try context.save()
-    }
-
-    func saveSegment(_ segment: PendingTimerSegment) throws {
+    func saveSegment(_ segment: ActiveTimerSegment) throws {
+        try requireAccountBinding()
         context.insert(PendingSegmentRecord(segment: segment))
         try context.save()
     }
 
-    func activeSegment() throws -> PendingTimerSegment? {
+    func activeSegment() throws -> ActiveTimerSegment? {
+        guard try hasAccountBinding() else { return nil }
         let descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
         return try context.fetch(descriptor).first?.domain
     }
 
     func updateActiveSegment(draft: TimerDraft? = nil, remoteTimerID: String? = nil) throws {
+        try requireAccountBinding()
         var descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
         descriptor.fetchLimit = 1
         guard let record = try context.fetch(descriptor).first else { return }
@@ -240,7 +260,8 @@ final class OfflineStore {
         try context.save()
     }
 
-    func closeActiveSegment(at date: Date) throws -> PendingTimerSegment? {
+    func closeActiveSegment(at date: Date) throws -> ActiveTimerSegment? {
+        try requireAccountBinding()
         var descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
         descriptor.fetchLimit = 1
         guard let record = try context.fetch(descriptor).first else { return nil }
@@ -250,8 +271,34 @@ final class OfflineStore {
     }
 
     func discardActiveSegment() throws {
+        try requireAccountBinding()
         let descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
         try context.fetch(descriptor).forEach(context.delete)
         try context.save()
+    }
+
+    private func accountRecord() throws -> CachedAccountRecord? {
+        var descriptor = FetchDescriptor<CachedAccountRecord>()
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private func hasAccountBinding() throws -> Bool {
+        guard let record = try accountRecord() else { return false }
+        return !record.accountID.isEmpty && record.domain?.id == record.accountID
+    }
+
+    private func requireAccountBinding() throws {
+        guard try hasAccountBinding() else { throw OfflineStoreError.accountNotBound }
+    }
+
+    private func clearCachedContent() throws {
+        try context.fetch(FetchDescriptor<CachedProject>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<CachedTag>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<CachedEntry>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<FavoriteRecord>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<PendingSegmentRecord>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<OutboxRecord>()).forEach(context.delete)
+        try context.fetch(FetchDescriptor<ConflictRecord>()).forEach(context.delete)
     }
 }

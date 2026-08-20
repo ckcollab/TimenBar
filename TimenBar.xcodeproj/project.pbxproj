@@ -7,267 +7,288 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		049E960C79BBE2AC505A84A0 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A888EE3A49C73AD1F861740 /* NotificationService.swift */; };
-		06F850F9E0B10D9A4C059387 /* IdlePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A8967CB452F590FC1208BD /* IdlePromptView.swift */; };
-		094D66D96BB62BC4A901DD0C /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A86EA86108E4BEFE4B664F3C /* MenuBarPanel.swift */; };
-		12490A40168D966E1052CACB /* CoreBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A48AEE0E5B7AEB785D2D361 /* CoreBehaviorTests.swift */; };
-		160230106143CACAAA7E9386 /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B63B17A0B72E0DB4BB0FAA3F /* IdleMonitor.swift */; };
-		2162F22E00D9AF048AC0D26F /* PersistenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631B67F61E239D6EF8352AD0 /* PersistenceModels.swift */; };
-		223908B62F9CAB5A524C5E1F /* ConflictReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91AF16AD1B318C6D9D215C4B /* ConflictReviewView.swift */; };
-		2B88CBD84854B29806155265 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 052BD85FDAEBC6E9962EFD12 /* AppSettings.swift */; };
-		3011E5DD8AAE7239FE561FA2 /* StatusItemLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8ACD96C2493BEE3D9E8371 /* StatusItemLabel.swift */; };
-		307ED6BD480E58C36F09BF27 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 62BC1C8E0B8BD3C7AD7FBF5C /* MCP */; };
-		411824085EBBF98F446A09DF /* WeekStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BC185824DA49BF51AFF226E /* WeekStripView.swift */; };
-		432BA9825D2463DB1C9EE71C /* DomainModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54861E78F6C2EFD4E4C7A530 /* DomainModels.swift */; };
-		4A018CF6228C195A4BDC862E /* TimenMCPGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56D948DBAA5C6A661280DE78 /* TimenMCPGateway.swift */; };
-		4CCD93B1221502E434EEAE07 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2177195827062D4127587B /* KeychainStoreTests.swift */; };
-		58F405DF7879843FA5536A78 /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C5D047ED7FBF23A76A9251 /* OfflineStore.swift */; };
-		60C31FCF80EFA4DE0530507B /* OAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39574B82ADCA0A3DA2A62F0C /* OAuthSession.swift */; };
-		629EA20A0477B3B2BAD65A8D /* ConnectivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A96DB7AB1FF5437546C85F /* ConnectivityMonitor.swift */; };
-		6B9051D168A3451ABE686826 /* TimenBarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ED0C8A739043B9849AFD18C /* TimenBarUITests.swift */; };
-		7354B00A1A01649ED9661E8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A2A517986EC37387ABE2376 /* Assets.xcassets */; };
-		76FB91303E324F69C2682415 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EBA8BF4745CB31EFE20048DB /* Cocoa.framework */; };
-		80E1DDE21AC85EFCF1CA666F /* FavoritesStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46F016753E0782FFA394D4C /* FavoritesStrip.swift */; };
-		8543B84800AAF2C1DC215439 /* TimerComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CE8E343D513F05E7128B97 /* TimerComposerView.swift */; };
-		937BF47AC829CE3C2206E3CA /* TimenGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82979B0FB0CE2D4B7779605D /* TimenGateway.swift */; };
-		969FCD3B0988843C2627D08B /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E45C7D7C6BB256693202B91 /* AppModel.swift */; };
-		9E4AE1BB596063777A75D74C /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C928638E80F7543BF7FE9582 /* UpdateController.swift */; };
-		A2969B4317B45D9A63EA024E /* TimenBarTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BC902A3F5D99AC99786F42 /* TimenBarTheme.swift */; };
-		A56213D49A7FEC15823DEFFA /* PersistenceSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0358D6A1D91836F0A3B4D744 /* PersistenceSchema.swift */; };
-		B4740A2E9984BBB92389E193 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF25BA3A557CDBAC6BF7F62 /* StatusBarController.swift */; };
-		B884AADD3F1D4A84E6B54F27 /* OfflineStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C437E03AEBD9599F53813A66 /* OfflineStoreTests.swift */; };
-		B93435231BB7459C278282F9 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EBA8BF4745CB31EFE20048DB /* Cocoa.framework */; };
-		BE5C5CEA5C6D1B9BCE4F38AF /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A61D07CF8325E6E798B5121 /* KeychainStore.swift */; };
-		BF1B2AB90E89138B18C4BF99 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EBA8BF4745CB31EFE20048DB /* Cocoa.framework */; };
-		DD97E854591F2D12C6202301 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20624DAF189BAEF9D425B73 /* SettingsView.swift */; };
-		ED7DA9AF8AC7B5B918B82923 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FC141B19827B212F66C6B12F /* Sparkle */; };
-		F3E16250588A8D31B2061E41 /* TimenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E349D796EF81012076A408F6 /* TimenBarApp.swift */; };
-		F4AA3EA8A118F70C5E7BDD67 /* EntryRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C19C9A0F7F0693A77BA075 /* EntryRowView.swift */; };
+		0842329FC19DDF85B9ADFF9B /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = C46FA2789D751A90430F82C1 /* Sparkle */; };
+		10487E36D815FFE0A36D0BFC /* IdlePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C83887FBE4FB829A0EF8D924 /* IdlePromptView.swift */; };
+		134B2C9664BF556280CFF669 /* KeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB049EB85A8DA3D22E6F728B /* KeychainStoreTests.swift */; };
+		1503601E16BE4AE5E05875DB /* EntryRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B28541ADBCB46E7DECCC0EA3 /* EntryRowView.swift */; };
+		1E06CB1BA03D9F43B2325842 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CC9BC9AEDC9CEABE104C95 /* SettingsView.swift */; };
+		22E2DA92F94DCC661F4A1823 /* FavoritesStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27DB646D4ADB9EF9EA041202 /* FavoritesStrip.swift */; };
+		257661C6A49088A9891A5EE1 /* OfflineStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 820E20740898FBDD082B68F3 /* OfflineStoreTests.swift */; };
+		26F1D114D3F8C379B3F01A62 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07AAAFBA4CE7671FBA0D76F3 /* Cocoa.framework */; };
+		356D9B65EE3149AA0D3560C4 /* OAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6FF9AAE77A39A774B622B6 /* OAuthSession.swift */; };
+		356E2490560FABE0B4CC6DB2 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E33E6CBC631B9D55AEE5FE /* AppModel.swift */; };
+		38DF8FF67449911160F0990C /* PersistenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6F24C1159D40119FF27ADD9 /* PersistenceModels.swift */; };
+		3AF1D30FA7A36691E1C6EFC7 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = C25967215605B845080BBC70 /* MCP */; };
+		43DD08516FED2CCBDB2B3FE0 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF050F2C5C511E002F9AB3F7 /* NotificationService.swift */; };
+		57649A2D1222F6C6251BF4D5 /* TimenBarTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BAF3FB99A6292BA561F55B /* TimenBarTheme.swift */; };
+		5D94F1BD7D52B1B5BE4EC560 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A28F5594E294C88C44015F /* UpdateController.swift */; };
+		63FAA45E11EE4529375D6D8D /* TimenBarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016856FC413EFD673FC23292 /* TimenBarUITests.swift */; };
+		64A1904569708116A7735AA1 /* TimenMCPGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B36B06EF9621A4E17087BDC /* TimenMCPGateway.swift */; };
+		791EFC9152445F68F45817C5 /* ConnectivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEEC2DC30AABF2E94E6A5FB /* ConnectivityMonitor.swift */; };
+		79D5A3BF0F0C944F758F9E87 /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5285C27A8E62BDB1AF3F88 /* OfflineStore.swift */; };
+		7CE53150E45DB93727065DD7 /* IdleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01775AF6A56D2C604869C904 /* IdleMonitor.swift */; };
+		8A445A666990CA35CEBC3625 /* CoreBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D891CF922A106E0E70B1B4C /* CoreBehaviorTests.swift */; };
+		8B64027891C60FF8692DDFDE /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F836F33BA42C71F966373BC1 /* KeychainStore.swift */; };
+		8DCDB0679215CE4A3D7EB35A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850CA1098F941A632D061453 /* AppSettings.swift */; };
+		98748DC9F4E98E11E1273D42 /* MenuBarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBDC08F61E3BCF083ED685DA /* MenuBarPanel.swift */; };
+		A405C27DBB41164132FB121F /* DomainModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321116F4564366EDEAFF6FC0 /* DomainModels.swift */; };
+		A6B84E704B390C34669D9ED6 /* StatusItemLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF94882334CA4BBA62E3DACF /* StatusItemLabel.swift */; };
+		B3967EBFE80E5584544F0DDD /* PersistenceSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D027B0CE24DE934C3E70607 /* PersistenceSchema.swift */; };
+		B7A92E666F2B4165CB4C2884 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07AAAFBA4CE7671FBA0D76F3 /* Cocoa.framework */; };
+		BF919581C8E07F6A02D1CE69 /* TimerComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C52B618F7130BE3B72D46B /* TimerComposerView.swift */; };
+		C83826A2CF03A78E8562A3CE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E61C3A406122D090F94F8E6 /* Assets.xcassets */; };
+		CAE5EDBF44598A1C2E22330C /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 07AAAFBA4CE7671FBA0D76F3 /* Cocoa.framework */; };
+		CBFB14F950556FFE6E113E49 /* OAuthSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BC60CF71D32B2AD8319F90 /* OAuthSessionTests.swift */; };
+		D7F87B503BF3FA99907962DC /* TimenBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B4C121E65BA303277DE41F /* TimenBarApp.swift */; };
+		DA1DAFADF07955ECA53BDAA6 /* TimenMCPGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A77EBCF5E153B35CFF4F7F0 /* TimenMCPGatewayTests.swift */; };
+		DC5010F2DB79552A6AC91DF0 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CD63E2D1FCA33D1EDEA53B /* StatusBarController.swift */; };
+		EB909D16A49671A84285E6C1 /* TimenGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B1C23EF5531C6A81EC0A4B /* TimenGateway.swift */; };
+		F2CD270576734E686AF95A23 /* WeekStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA36CF721ED4C805FCF454DA /* WeekStripView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		8E472BBDF279B1EEFA479FD2 /* PBXContainerItemProxy */ = {
+		6568DFF00D6B87A6BFC4E9D1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 0F491FA55DE8803964163896 /* Project object */;
+			containerPortal = BF5B538F4E0BD349ED39A303 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 0433F6A64A2F85EFB186BDD5;
+			remoteGlobalIDString = 716A8CF39CD87E68C09FCB52;
 			remoteInfo = TimenBar;
 		};
-		90D51BADF81A438E43AA6929 /* PBXContainerItemProxy */ = {
+		8ABE0CDB9227E41AA44E5B52 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 0F491FA55DE8803964163896 /* Project object */;
+			containerPortal = BF5B538F4E0BD349ED39A303 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 0433F6A64A2F85EFB186BDD5;
+			remoteGlobalIDString = 716A8CF39CD87E68C09FCB52;
 			remoteInfo = TimenBar;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0358D6A1D91836F0A3B4D744 /* PersistenceSchema.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PersistenceSchema.swift; sourceTree = "<group>"; };
-		052BD85FDAEBC6E9962EFD12 /* AppSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		0C2177195827062D4127587B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainStoreTests.swift; sourceTree = "<group>"; };
-		1A8ACD96C2493BEE3D9E8371 /* StatusItemLabel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusItemLabel.swift; sourceTree = "<group>"; };
-		22C19C9A0F7F0693A77BA075 /* EntryRowView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EntryRowView.swift; sourceTree = "<group>"; };
-		2A2A517986EC37387ABE2376 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		2BC185824DA49BF51AFF226E /* WeekStripView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WeekStripView.swift; sourceTree = "<group>"; };
-		37A8967CB452F590FC1208BD /* IdlePromptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdlePromptView.swift; sourceTree = "<group>"; };
-		39574B82ADCA0A3DA2A62F0C /* OAuthSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OAuthSession.swift; sourceTree = "<group>"; };
-		3CF25BA3A557CDBAC6BF7F62 /* StatusBarController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
-		3ED0C8A739043B9849AFD18C /* TimenBarUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarUITests.swift; sourceTree = "<group>"; };
-		4A61D07CF8325E6E798B5121 /* KeychainStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
-		54861E78F6C2EFD4E4C7A530 /* DomainModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
-		56D948DBAA5C6A661280DE78 /* TimenMCPGateway.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenMCPGateway.swift; sourceTree = "<group>"; };
-		631B67F61E239D6EF8352AD0 /* PersistenceModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PersistenceModels.swift; sourceTree = "<group>"; };
-		7E45C7D7C6BB256693202B91 /* AppModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
-		82979B0FB0CE2D4B7779605D /* TimenGateway.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenGateway.swift; sourceTree = "<group>"; };
-		8A888EE3A49C73AD1F861740 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
-		91AF16AD1B318C6D9D215C4B /* ConflictReviewView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConflictReviewView.swift; sourceTree = "<group>"; };
-		9A48AEE0E5B7AEB785D2D361 /* CoreBehaviorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreBehaviorTests.swift; sourceTree = "<group>"; };
-		A1C5D047ED7FBF23A76A9251 /* OfflineStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
-		A86EA86108E4BEFE4B664F3C /* MenuBarPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
-		B10841C7F227DA408DBB8890 /* TimenBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimenBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B13B86CE0632CD0DD81018D2 /* TimenBarUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimenBarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B46F016753E0782FFA394D4C /* FavoritesStrip.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FavoritesStrip.swift; sourceTree = "<group>"; };
-		B63B17A0B72E0DB4BB0FAA3F /* IdleMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
-		C20624DAF189BAEF9D425B73 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		C230FC21BC40AAC9B94F75D4 /* TimenBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TimenBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C437E03AEBD9599F53813A66 /* OfflineStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfflineStoreTests.swift; sourceTree = "<group>"; };
-		C6A96DB7AB1FF5437546C85F /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
-		C7BC902A3F5D99AC99786F42 /* TimenBarTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarTheme.swift; sourceTree = "<group>"; };
-		C928638E80F7543BF7FE9582 /* UpdateController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
-		D1CE8E343D513F05E7128B97 /* TimerComposerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimerComposerView.swift; sourceTree = "<group>"; };
-		E349D796EF81012076A408F6 /* TimenBarApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarApp.swift; sourceTree = "<group>"; };
-		EBA8BF4745CB31EFE20048DB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		016856FC413EFD673FC23292 /* TimenBarUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarUITests.swift; sourceTree = "<group>"; };
+		01775AF6A56D2C604869C904 /* IdleMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdleMonitor.swift; sourceTree = "<group>"; };
+		07AAAFBA4CE7671FBA0D76F3 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		141C8CC03614BB734E427616 /* TimenBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimenBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		17B1C23EF5531C6A81EC0A4B /* TimenGateway.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenGateway.swift; sourceTree = "<group>"; };
+		1A77EBCF5E153B35CFF4F7F0 /* TimenMCPGatewayTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenMCPGatewayTests.swift; sourceTree = "<group>"; };
+		24CD63E2D1FCA33D1EDEA53B /* StatusBarController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
+		27DB646D4ADB9EF9EA041202 /* FavoritesStrip.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FavoritesStrip.swift; sourceTree = "<group>"; };
+		31209E0C5187CDD0EA1CB335 /* TimenBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TimenBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		321116F4564366EDEAFF6FC0 /* DomainModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
+		52BAF3FB99A6292BA561F55B /* TimenBarTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarTheme.swift; sourceTree = "<group>"; };
+		67B4C121E65BA303277DE41F /* TimenBarApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenBarApp.swift; sourceTree = "<group>"; };
+		6A6A2404AC3DE2A55ACADEAB /* TimenBarUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TimenBarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		77E33E6CBC631B9D55AEE5FE /* AppModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		7E61C3A406122D090F94F8E6 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		820E20740898FBDD082B68F3 /* OfflineStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfflineStoreTests.swift; sourceTree = "<group>"; };
+		850CA1098F941A632D061453 /* AppSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		8B36B06EF9621A4E17087BDC /* TimenMCPGateway.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimenMCPGateway.swift; sourceTree = "<group>"; };
+		95A28F5594E294C88C44015F /* UpdateController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UpdateController.swift; sourceTree = "<group>"; };
+		9D027B0CE24DE934C3E70607 /* PersistenceSchema.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PersistenceSchema.swift; sourceTree = "<group>"; };
+		9D6FF9AAE77A39A774B622B6 /* OAuthSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OAuthSession.swift; sourceTree = "<group>"; };
+		9D891CF922A106E0E70B1B4C /* CoreBehaviorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreBehaviorTests.swift; sourceTree = "<group>"; };
+		A6F24C1159D40119FF27ADD9 /* PersistenceModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PersistenceModels.swift; sourceTree = "<group>"; };
+		AA36CF721ED4C805FCF454DA /* WeekStripView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WeekStripView.swift; sourceTree = "<group>"; };
+		AF94882334CA4BBA62E3DACF /* StatusItemLabel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusItemLabel.swift; sourceTree = "<group>"; };
+		B28541ADBCB46E7DECCC0EA3 /* EntryRowView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EntryRowView.swift; sourceTree = "<group>"; };
+		BAEEC2DC30AABF2E94E6A5FB /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
+		BB049EB85A8DA3D22E6F728B /* KeychainStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainStoreTests.swift; sourceTree = "<group>"; };
+		BE5285C27A8E62BDB1AF3F88 /* OfflineStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
+		C83887FBE4FB829A0EF8D924 /* IdlePromptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdlePromptView.swift; sourceTree = "<group>"; };
+		CF050F2C5C511E002F9AB3F7 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		D9C52B618F7130BE3B72D46B /* TimerComposerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TimerComposerView.swift; sourceTree = "<group>"; };
+		E1CC9BC9AEDC9CEABE104C95 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		E5BC60CF71D32B2AD8319F90 /* OAuthSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OAuthSessionTests.swift; sourceTree = "<group>"; };
+		F836F33BA42C71F966373BC1 /* KeychainStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		FBDC08F61E3BCF083ED685DA /* MenuBarPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarPanel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		4A25BF275B2451886D85BEF3 /* Frameworks */ = {
+		1A18F47B5D9461568EFFF7DC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				76FB91303E324F69C2682415 /* Cocoa.framework in Frameworks */,
+				B7A92E666F2B4165CB4C2884 /* Cocoa.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DFABF9846F99F6DC2EBFD37B /* Frameworks */ = {
+		21040CD2FC8B24BBE7627AE3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BF1B2AB90E89138B18C4BF99 /* Cocoa.framework in Frameworks */,
+				26F1D114D3F8C379B3F01A62 /* Cocoa.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E09E694683B193C19035CF0A /* Frameworks */ = {
+		C74EA55F6D3CA1C1D4D21D84 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B93435231BB7459C278282F9 /* Cocoa.framework in Frameworks */,
-				307ED6BD480E58C36F09BF27 /* MCP in Frameworks */,
-				ED7DA9AF8AC7B5B918B82923 /* Sparkle in Frameworks */,
+				CAE5EDBF44598A1C2E22330C /* Cocoa.framework in Frameworks */,
+				3AF1D30FA7A36691E1C6EFC7 /* MCP in Frameworks */,
+				0842329FC19DDF85B9ADFF9B /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		21053D720536029EB1231882 /* Products */ = {
+		00840C4DF572E7CD4307FB4F /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				C230FC21BC40AAC9B94F75D4 /* TimenBar.app */,
-				B10841C7F227DA408DBB8890 /* TimenBarTests.xctest */,
-				B13B86CE0632CD0DD81018D2 /* TimenBarUITests.xctest */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		342033C5D6600F6AB8D4D4B1 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				7E45C7D7C6BB256693202B91 /* AppModel.swift */,
-				54861E78F6C2EFD4E4C7A530 /* DomainModels.swift */,
-			);
-			name = Models;
-			path = Models;
-			sourceTree = "<group>";
-		};
-		359050F6AFC4CB44825BEA76 /* OS X */ = {
-			isa = PBXGroup;
-			children = (
-				EBA8BF4745CB31EFE20048DB /* Cocoa.framework */,
-			);
-			name = "OS X";
-			sourceTree = "<group>";
-		};
-		3A07DE59E01268D911398080 /* TimenBar */ = {
-			isa = PBXGroup;
-			children = (
-				2A2A517986EC37387ABE2376 /* Assets.xcassets */,
-				342033C5D6600F6AB8D4D4B1 /* Models */,
-				EDB00E214C26C1F50302EB66 /* Persistence */,
-				81C07556E43A8AF09D17457B /* Services */,
-				E349D796EF81012076A408F6 /* TimenBarApp.swift */,
-				7AC37ED0FCB29D1FC98A7AE1 /* Views */,
-			);
-			name = TimenBar;
-			path = TimenBar;
-			sourceTree = "<group>";
-		};
-		7AC37ED0FCB29D1FC98A7AE1 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				91AF16AD1B318C6D9D215C4B /* ConflictReviewView.swift */,
-				22C19C9A0F7F0693A77BA075 /* EntryRowView.swift */,
-				B46F016753E0782FFA394D4C /* FavoritesStrip.swift */,
-				37A8967CB452F590FC1208BD /* IdlePromptView.swift */,
-				A86EA86108E4BEFE4B664F3C /* MenuBarPanel.swift */,
-				C20624DAF189BAEF9D425B73 /* SettingsView.swift */,
-				1A8ACD96C2493BEE3D9E8371 /* StatusItemLabel.swift */,
-				C7BC902A3F5D99AC99786F42 /* TimenBarTheme.swift */,
-				D1CE8E343D513F05E7128B97 /* TimerComposerView.swift */,
-				2BC185824DA49BF51AFF226E /* WeekStripView.swift */,
-			);
-			name = Views;
-			path = Views;
-			sourceTree = "<group>";
-		};
-		81C07556E43A8AF09D17457B /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				052BD85FDAEBC6E9962EFD12 /* AppSettings.swift */,
-				C6A96DB7AB1FF5437546C85F /* ConnectivityMonitor.swift */,
-				B63B17A0B72E0DB4BB0FAA3F /* IdleMonitor.swift */,
-				4A61D07CF8325E6E798B5121 /* KeychainStore.swift */,
-				8A888EE3A49C73AD1F861740 /* NotificationService.swift */,
-				39574B82ADCA0A3DA2A62F0C /* OAuthSession.swift */,
-				3CF25BA3A557CDBAC6BF7F62 /* StatusBarController.swift */,
-				82979B0FB0CE2D4B7779605D /* TimenGateway.swift */,
-				56D948DBAA5C6A661280DE78 /* TimenMCPGateway.swift */,
-				C928638E80F7543BF7FE9582 /* UpdateController.swift */,
+				850CA1098F941A632D061453 /* AppSettings.swift */,
+				BAEEC2DC30AABF2E94E6A5FB /* ConnectivityMonitor.swift */,
+				01775AF6A56D2C604869C904 /* IdleMonitor.swift */,
+				F836F33BA42C71F966373BC1 /* KeychainStore.swift */,
+				CF050F2C5C511E002F9AB3F7 /* NotificationService.swift */,
+				9D6FF9AAE77A39A774B622B6 /* OAuthSession.swift */,
+				24CD63E2D1FCA33D1EDEA53B /* StatusBarController.swift */,
+				17B1C23EF5531C6A81EC0A4B /* TimenGateway.swift */,
+				8B36B06EF9621A4E17087BDC /* TimenMCPGateway.swift */,
+				95A28F5594E294C88C44015F /* UpdateController.swift */,
 			);
 			name = Services;
 			path = Services;
 			sourceTree = "<group>";
 		};
-		9386CD46E974BCD5AFCD5AA0 /* Frameworks */ = {
+		14A523C11CA66615AF2B2A80 /* TimenBarUITests */ = {
 			isa = PBXGroup;
 			children = (
-				359050F6AFC4CB44825BEA76 /* OS X */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		94770F3E76D11C4F5AE66515 /* TimenBarTests */ = {
-			isa = PBXGroup;
-			children = (
-				9A48AEE0E5B7AEB785D2D361 /* CoreBehaviorTests.swift */,
-				0C2177195827062D4127587B /* KeychainStoreTests.swift */,
-				C437E03AEBD9599F53813A66 /* OfflineStoreTests.swift */,
-			);
-			name = TimenBarTests;
-			path = TimenBarTests;
-			sourceTree = "<group>";
-		};
-		DE32EF51E031694B76EFB62F /* TimenBarUITests */ = {
-			isa = PBXGroup;
-			children = (
-				3ED0C8A739043B9849AFD18C /* TimenBarUITests.swift */,
+				016856FC413EFD673FC23292 /* TimenBarUITests.swift */,
 			);
 			name = TimenBarUITests;
 			path = TimenBarUITests;
 			sourceTree = "<group>";
 		};
-		E692CF25DA837B097C10A52C = {
+		4CA5EAF7311A92043E4963B9 = {
 			isa = PBXGroup;
 			children = (
-				21053D720536029EB1231882 /* Products */,
-				9386CD46E974BCD5AFCD5AA0 /* Frameworks */,
-				3A07DE59E01268D911398080 /* TimenBar */,
-				94770F3E76D11C4F5AE66515 /* TimenBarTests */,
-				DE32EF51E031694B76EFB62F /* TimenBarUITests */,
+				E022BDAD321007A01EB70969 /* Products */,
+				7E0235F3BCE492B860806822 /* Frameworks */,
+				72DEFC7409079C595C6FA946 /* TimenBar */,
+				EBC9A21A254BABBFCFF0FFBB /* TimenBarTests */,
+				14A523C11CA66615AF2B2A80 /* TimenBarUITests */,
 			);
 			sourceTree = "<group>";
 		};
-		EDB00E214C26C1F50302EB66 /* Persistence */ = {
+		72DEFC7409079C595C6FA946 /* TimenBar */ = {
 			isa = PBXGroup;
 			children = (
-				A1C5D047ED7FBF23A76A9251 /* OfflineStore.swift */,
-				631B67F61E239D6EF8352AD0 /* PersistenceModels.swift */,
-				0358D6A1D91836F0A3B4D744 /* PersistenceSchema.swift */,
+				7E61C3A406122D090F94F8E6 /* Assets.xcassets */,
+				BACFC8F8F1A1DD60721EDCBA /* Models */,
+				77D20552758061BD40CEE00B /* Persistence */,
+				00840C4DF572E7CD4307FB4F /* Services */,
+				67B4C121E65BA303277DE41F /* TimenBarApp.swift */,
+				F29AE66F0978FB872D830CF4 /* Views */,
+			);
+			name = TimenBar;
+			path = TimenBar;
+			sourceTree = "<group>";
+		};
+		77D20552758061BD40CEE00B /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				BE5285C27A8E62BDB1AF3F88 /* OfflineStore.swift */,
+				A6F24C1159D40119FF27ADD9 /* PersistenceModels.swift */,
+				9D027B0CE24DE934C3E70607 /* PersistenceSchema.swift */,
 			);
 			name = Persistence;
 			path = Persistence;
 			sourceTree = "<group>";
 		};
+		7E0235F3BCE492B860806822 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A91F60DD5B370FCE14F26352 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A91F60DD5B370FCE14F26352 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				07AAAFBA4CE7671FBA0D76F3 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		BACFC8F8F1A1DD60721EDCBA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				77E33E6CBC631B9D55AEE5FE /* AppModel.swift */,
+				321116F4564366EDEAFF6FC0 /* DomainModels.swift */,
+			);
+			name = Models;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		E022BDAD321007A01EB70969 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				31209E0C5187CDD0EA1CB335 /* TimenBar.app */,
+				141C8CC03614BB734E427616 /* TimenBarTests.xctest */,
+				6A6A2404AC3DE2A55ACADEAB /* TimenBarUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EBC9A21A254BABBFCFF0FFBB /* TimenBarTests */ = {
+			isa = PBXGroup;
+			children = (
+				9D891CF922A106E0E70B1B4C /* CoreBehaviorTests.swift */,
+				BB049EB85A8DA3D22E6F728B /* KeychainStoreTests.swift */,
+				E5BC60CF71D32B2AD8319F90 /* OAuthSessionTests.swift */,
+				820E20740898FBDD082B68F3 /* OfflineStoreTests.swift */,
+				1A77EBCF5E153B35CFF4F7F0 /* TimenMCPGatewayTests.swift */,
+			);
+			name = TimenBarTests;
+			path = TimenBarTests;
+			sourceTree = "<group>";
+		};
+		F29AE66F0978FB872D830CF4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				B28541ADBCB46E7DECCC0EA3 /* EntryRowView.swift */,
+				27DB646D4ADB9EF9EA041202 /* FavoritesStrip.swift */,
+				C83887FBE4FB829A0EF8D924 /* IdlePromptView.swift */,
+				FBDC08F61E3BCF083ED685DA /* MenuBarPanel.swift */,
+				E1CC9BC9AEDC9CEABE104C95 /* SettingsView.swift */,
+				AF94882334CA4BBA62E3DACF /* StatusItemLabel.swift */,
+				52BAF3FB99A6292BA561F55B /* TimenBarTheme.swift */,
+				D9C52B618F7130BE3B72D46B /* TimerComposerView.swift */,
+				AA36CF721ED4C805FCF454DA /* WeekStripView.swift */,
+			);
+			name = Views;
+			path = Views;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0433F6A64A2F85EFB186BDD5 /* TimenBar */ = {
+		6E9AB1ECC9495A784691270D /* TimenBarTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 74A0DD2470D4874DB9076CAF /* Build configuration list for PBXNativeTarget "TimenBar" */;
+			buildConfigurationList = A273DFC1D791F2D114162A99 /* Build configuration list for PBXNativeTarget "TimenBarTests" */;
 			buildPhases = (
-				E463F69AD98E939589F6AE7C /* Sources */,
-				E09E694683B193C19035CF0A /* Frameworks */,
-				34619D1E53347CF99390C08D /* Resources */,
+				8CE4999542845AE001CFBFA5 /* Sources */,
+				1A18F47B5D9461568EFFF7DC /* Frameworks */,
+				693B2AF2DF982865FF273333 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0E3E4CBDAEABAD0164D8F96E /* PBXTargetDependency */,
+			);
+			name = TimenBarTests;
+			productName = TimenBarTests;
+			productReference = 141C8CC03614BB734E427616 /* TimenBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		716A8CF39CD87E68C09FCB52 /* TimenBar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F542363974C825ACBC9FECE9 /* Build configuration list for PBXNativeTarget "TimenBar" */;
+			buildPhases = (
+				1154AB57B2AFB5F5C9E35A45 /* Sources */,
+				C74EA55F6D3CA1C1D4D21D84 /* Frameworks */,
+				53DCBF7BFDF04AB73A63FE83 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -275,59 +296,41 @@
 			);
 			name = TimenBar;
 			packageProductDependencies = (
-				62BC1C8E0B8BD3C7AD7FBF5C /* MCP */,
-				FC141B19827B212F66C6B12F /* Sparkle */,
+				C25967215605B845080BBC70 /* MCP */,
+				C46FA2789D751A90430F82C1 /* Sparkle */,
 			);
 			productName = TimenBar;
-			productReference = C230FC21BC40AAC9B94F75D4 /* TimenBar.app */;
+			productReference = 31209E0C5187CDD0EA1CB335 /* TimenBar.app */;
 			productType = "com.apple.product-type.application";
 		};
-		6DD8DCDC8B4336523BE0E212 /* TimenBarUITests */ = {
+		CF4943E46E0E7AB800240878 /* TimenBarUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 021EC6A7B41A97B5CD14824F /* Build configuration list for PBXNativeTarget "TimenBarUITests" */;
+			buildConfigurationList = 1840682E3D2F26BF4248C353 /* Build configuration list for PBXNativeTarget "TimenBarUITests" */;
 			buildPhases = (
-				3BE6C5AA0B6032022D3F121A /* Sources */,
-				DFABF9846F99F6DC2EBFD37B /* Frameworks */,
-				FC81D5741E2922C46AD5E48D /* Resources */,
+				82C7038680D3A6B7204AF8FB /* Sources */,
+				21040CD2FC8B24BBE7627AE3 /* Frameworks */,
+				F06C24A5BC6C1BA80F405F95 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				BDE41680A17CD07C8069ED85 /* PBXTargetDependency */,
+				5667834E0259801888E0DB10 /* PBXTargetDependency */,
 			);
 			name = TimenBarUITests;
 			productName = TimenBarUITests;
-			productReference = B13B86CE0632CD0DD81018D2 /* TimenBarUITests.xctest */;
+			productReference = 6A6A2404AC3DE2A55ACADEAB /* TimenBarUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
-		};
-		B9BAC67F65778273C2C003F7 /* TimenBarTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = CECED915BEE04859C96091ED /* Build configuration list for PBXNativeTarget "TimenBarTests" */;
-			buildPhases = (
-				A27B22BCD6ED82215419C2B6 /* Sources */,
-				4A25BF275B2451886D85BEF3 /* Frameworks */,
-				8E8A0F6BB78A57431E9659C7 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				3141509DC0D75E986ABD52B3 /* PBXTargetDependency */,
-			);
-			name = TimenBarTests;
-			productName = TimenBarTests;
-			productReference = B10841C7F227DA408DBB8890 /* TimenBarTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		0F491FA55DE8803964163896 /* Project object */ = {
+		BF5B538F4E0BD349ED39A303 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 			};
-			buildConfigurationList = 73CEC9E227972F7E57954C60 /* Build configuration list for PBXProject "TimenBar" */;
+			buildConfigurationList = 0AFBD067D3E956BEC16BD816 /* Build configuration list for PBXProject "TimenBar" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -335,41 +338,41 @@
 				en,
 				Base,
 			);
-			mainGroup = E692CF25DA837B097C10A52C;
+			mainGroup = 4CA5EAF7311A92043E4963B9;
 			minimizedProjectReferenceProxies = 0;
 			packageReferences = (
-				85493A665DE55F1BDF7BBBAE /* XCRemoteSwiftPackageReference "swift-sdk" */,
-				14DC8BBFF034904E850006C4 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				9559DF6CF393BF715EF7681E /* XCRemoteSwiftPackageReference "swift-sdk" */,
+				125BD098C0F5A7EABF0CC2B0 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 21053D720536029EB1231882 /* Products */;
+			productRefGroup = E022BDAD321007A01EB70969 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				0433F6A64A2F85EFB186BDD5 /* TimenBar */,
-				B9BAC67F65778273C2C003F7 /* TimenBarTests */,
-				6DD8DCDC8B4336523BE0E212 /* TimenBarUITests */,
+				716A8CF39CD87E68C09FCB52 /* TimenBar */,
+				6E9AB1ECC9495A784691270D /* TimenBarTests */,
+				CF4943E46E0E7AB800240878 /* TimenBarUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		34619D1E53347CF99390C08D /* Resources */ = {
+		53DCBF7BFDF04AB73A63FE83 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7354B00A1A01649ED9661E8B /* Assets.xcassets in Resources */,
+				C83826A2CF03A78E8562A3CE /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		8E8A0F6BB78A57431E9659C7 /* Resources */ = {
+		693B2AF2DF982865FF273333 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FC81D5741E2922C46AD5E48D /* Resources */ = {
+		F06C24A5BC6C1BA80F405F95 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -379,106 +382,91 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		3BE6C5AA0B6032022D3F121A /* Sources */ = {
+		1154AB57B2AFB5F5C9E35A45 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6B9051D168A3451ABE686826 /* TimenBarUITests.swift in Sources */,
+				356E2490560FABE0B4CC6DB2 /* AppModel.swift in Sources */,
+				A405C27DBB41164132FB121F /* DomainModels.swift in Sources */,
+				79D5A3BF0F0C944F758F9E87 /* OfflineStore.swift in Sources */,
+				38DF8FF67449911160F0990C /* PersistenceModels.swift in Sources */,
+				B3967EBFE80E5584544F0DDD /* PersistenceSchema.swift in Sources */,
+				8DCDB0679215CE4A3D7EB35A /* AppSettings.swift in Sources */,
+				791EFC9152445F68F45817C5 /* ConnectivityMonitor.swift in Sources */,
+				7CE53150E45DB93727065DD7 /* IdleMonitor.swift in Sources */,
+				8B64027891C60FF8692DDFDE /* KeychainStore.swift in Sources */,
+				43DD08516FED2CCBDB2B3FE0 /* NotificationService.swift in Sources */,
+				356D9B65EE3149AA0D3560C4 /* OAuthSession.swift in Sources */,
+				DC5010F2DB79552A6AC91DF0 /* StatusBarController.swift in Sources */,
+				EB909D16A49671A84285E6C1 /* TimenGateway.swift in Sources */,
+				64A1904569708116A7735AA1 /* TimenMCPGateway.swift in Sources */,
+				5D94F1BD7D52B1B5BE4EC560 /* UpdateController.swift in Sources */,
+				D7F87B503BF3FA99907962DC /* TimenBarApp.swift in Sources */,
+				1503601E16BE4AE5E05875DB /* EntryRowView.swift in Sources */,
+				22E2DA92F94DCC661F4A1823 /* FavoritesStrip.swift in Sources */,
+				10487E36D815FFE0A36D0BFC /* IdlePromptView.swift in Sources */,
+				98748DC9F4E98E11E1273D42 /* MenuBarPanel.swift in Sources */,
+				1E06CB1BA03D9F43B2325842 /* SettingsView.swift in Sources */,
+				A6B84E704B390C34669D9ED6 /* StatusItemLabel.swift in Sources */,
+				57649A2D1222F6C6251BF4D5 /* TimenBarTheme.swift in Sources */,
+				BF919581C8E07F6A02D1CE69 /* TimerComposerView.swift in Sources */,
+				F2CD270576734E686AF95A23 /* WeekStripView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A27B22BCD6ED82215419C2B6 /* Sources */ = {
+		82C7038680D3A6B7204AF8FB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				12490A40168D966E1052CACB /* CoreBehaviorTests.swift in Sources */,
-				4CCD93B1221502E434EEAE07 /* KeychainStoreTests.swift in Sources */,
-				B884AADD3F1D4A84E6B54F27 /* OfflineStoreTests.swift in Sources */,
+				63FAA45E11EE4529375D6D8D /* TimenBarUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E463F69AD98E939589F6AE7C /* Sources */ = {
+		8CE4999542845AE001CFBFA5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				969FCD3B0988843C2627D08B /* AppModel.swift in Sources */,
-				432BA9825D2463DB1C9EE71C /* DomainModels.swift in Sources */,
-				58F405DF7879843FA5536A78 /* OfflineStore.swift in Sources */,
-				2162F22E00D9AF048AC0D26F /* PersistenceModels.swift in Sources */,
-				A56213D49A7FEC15823DEFFA /* PersistenceSchema.swift in Sources */,
-				2B88CBD84854B29806155265 /* AppSettings.swift in Sources */,
-				629EA20A0477B3B2BAD65A8D /* ConnectivityMonitor.swift in Sources */,
-				160230106143CACAAA7E9386 /* IdleMonitor.swift in Sources */,
-				BE5C5CEA5C6D1B9BCE4F38AF /* KeychainStore.swift in Sources */,
-				049E960C79BBE2AC505A84A0 /* NotificationService.swift in Sources */,
-				60C31FCF80EFA4DE0530507B /* OAuthSession.swift in Sources */,
-				B4740A2E9984BBB92389E193 /* StatusBarController.swift in Sources */,
-				937BF47AC829CE3C2206E3CA /* TimenGateway.swift in Sources */,
-				4A018CF6228C195A4BDC862E /* TimenMCPGateway.swift in Sources */,
-				9E4AE1BB596063777A75D74C /* UpdateController.swift in Sources */,
-				F3E16250588A8D31B2061E41 /* TimenBarApp.swift in Sources */,
-				223908B62F9CAB5A524C5E1F /* ConflictReviewView.swift in Sources */,
-				F4AA3EA8A118F70C5E7BDD67 /* EntryRowView.swift in Sources */,
-				80E1DDE21AC85EFCF1CA666F /* FavoritesStrip.swift in Sources */,
-				06F850F9E0B10D9A4C059387 /* IdlePromptView.swift in Sources */,
-				094D66D96BB62BC4A901DD0C /* MenuBarPanel.swift in Sources */,
-				DD97E854591F2D12C6202301 /* SettingsView.swift in Sources */,
-				3011E5DD8AAE7239FE561FA2 /* StatusItemLabel.swift in Sources */,
-				A2969B4317B45D9A63EA024E /* TimenBarTheme.swift in Sources */,
-				8543B84800AAF2C1DC215439 /* TimerComposerView.swift in Sources */,
-				411824085EBBF98F446A09DF /* WeekStripView.swift in Sources */,
+				8A445A666990CA35CEBC3625 /* CoreBehaviorTests.swift in Sources */,
+				134B2C9664BF556280CFF669 /* KeychainStoreTests.swift in Sources */,
+				CBFB14F950556FFE6E113E49 /* OAuthSessionTests.swift in Sources */,
+				257661C6A49088A9891A5EE1 /* OfflineStoreTests.swift in Sources */,
+				DA1DAFADF07955ECA53BDAA6 /* TimenMCPGatewayTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		3141509DC0D75E986ABD52B3 /* PBXTargetDependency */ = {
+		0E3E4CBDAEABAD0164D8F96E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = TimenBar;
-			target = 0433F6A64A2F85EFB186BDD5 /* TimenBar */;
-			targetProxy = 90D51BADF81A438E43AA6929 /* PBXContainerItemProxy */;
+			target = 716A8CF39CD87E68C09FCB52 /* TimenBar */;
+			targetProxy = 8ABE0CDB9227E41AA44E5B52 /* PBXContainerItemProxy */;
 		};
-		BDE41680A17CD07C8069ED85 /* PBXTargetDependency */ = {
+		5667834E0259801888E0DB10 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = TimenBar;
-			target = 0433F6A64A2F85EFB186BDD5 /* TimenBar */;
-			targetProxy = 8E472BBDF279B1EEFA479FD2 /* PBXContainerItemProxy */;
+			target = 716A8CF39CD87E68C09FCB52 /* TimenBar */;
+			targetProxy = 6568DFF00D6B87A6BFC4E9D1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		0F2E9E3EC96A18777DDDB0ED /* Release */ = {
+		19A7C776E587034597CA6926 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = TimenBar/TimenBar.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = MMJZRMH2BA;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_HARDENED_RUNTIME = YES;
+				CODE_SIGNING_ALLOWED = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 TimenBar contributors";
-				INFOPLIST_KEY_SUFeedURL = "https://timenbar.github.io/timenbar/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBar;
-				PRODUCT_NAME = TimenBar;
+				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarUITests;
 				SDKROOT = macosx;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = TimenBar;
 			};
 			name = Release;
 		};
-		2E3DF710A9B0B6F0CFD96BCC /* Debug */ = {
+		2A298900F08FC9B7D986C81D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -539,35 +527,7 @@
 			};
 			name = Debug;
 		};
-		4FD7AB584B851A73D9A4E300 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGNING_ALLOWED = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarTests;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TimenBar.app/Contents/MacOS/TimenBar";
-			};
-			name = Debug;
-		};
-		53BAE8AA179D6CA0D9E573F6 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGNING_ALLOWED = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarUITests;
-				SDKROOT = macosx;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TEST_TARGET_NAME = TimenBar;
-			};
-			name = Debug;
-		};
-		599AED3081A251CC3A281A3F /* Release */ = {
+		36B1FE3F2D3A3736CC33DDB8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -581,7 +541,7 @@
 			};
 			name = Release;
 		};
-		9795AE6B3663C66EA507DB5E /* Debug */ = {
+		3E789671346B02986A576DBC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -609,23 +569,9 @@
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 			};
-			name = Debug;
-		};
-		A7F25F688D765D6D9F8EB2E6 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGNING_ALLOWED = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarUITests;
-				SDKROOT = macosx;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TEST_TARGET_NAME = TimenBar;
-			};
 			name = Release;
 		};
-		D277B08B4479258B9BB743D8 /* Release */ = {
+		56AD478E8EE61B626EB15218 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -679,41 +625,99 @@
 			};
 			name = Release;
 		};
+		67A6425173A6444858880AE8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarUITests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = TimenBar;
+			};
+			name = Debug;
+		};
+		8191626E660F326ADF5E2BE5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TimenBar/TimenBar.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = MMJZRMH2BA;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 TimenBar contributors";
+				INFOPLIST_KEY_SUFeedURL = "https://timenbar.github.io/timenbar/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBar;
+				PRODUCT_NAME = TimenBar;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		FC4DA00B90F62B4D5A28A9F5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBarTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TimenBar.app/Contents/MacOS/TimenBar";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		021EC6A7B41A97B5CD14824F /* Build configuration list for PBXNativeTarget "TimenBarUITests" */ = {
+		0AFBD067D3E956BEC16BD816 /* Build configuration list for PBXProject "TimenBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A7F25F688D765D6D9F8EB2E6 /* Release */,
-				53BAE8AA179D6CA0D9E573F6 /* Debug */,
+				2A298900F08FC9B7D986C81D /* Debug */,
+				56AD478E8EE61B626EB15218 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		73CEC9E227972F7E57954C60 /* Build configuration list for PBXProject "TimenBar" */ = {
+		1840682E3D2F26BF4248C353 /* Build configuration list for PBXNativeTarget "TimenBarUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2E3DF710A9B0B6F0CFD96BCC /* Debug */,
-				D277B08B4479258B9BB743D8 /* Release */,
+				19A7C776E587034597CA6926 /* Release */,
+				67A6425173A6444858880AE8 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		74A0DD2470D4874DB9076CAF /* Build configuration list for PBXNativeTarget "TimenBar" */ = {
+		A273DFC1D791F2D114162A99 /* Build configuration list for PBXNativeTarget "TimenBarTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				0F2E9E3EC96A18777DDDB0ED /* Release */,
-				9795AE6B3663C66EA507DB5E /* Debug */,
+				36B1FE3F2D3A3736CC33DDB8 /* Release */,
+				FC4DA00B90F62B4D5A28A9F5 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CECED915BEE04859C96091ED /* Build configuration list for PBXNativeTarget "TimenBarTests" */ = {
+		F542363974C825ACBC9FECE9 /* Build configuration list for PBXNativeTarget "TimenBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				599AED3081A251CC3A281A3F /* Release */,
-				4FD7AB584B851A73D9A4E300 /* Debug */,
+				3E789671346B02986A576DBC /* Release */,
+				8191626E660F326ADF5E2BE5 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -721,7 +725,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		14DC8BBFF034904E850006C4 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+		125BD098C0F5A7EABF0CC2B0 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
 			requirement = {
@@ -729,28 +733,28 @@
 				version = 2.9.2;
 			};
 		};
-		85493A665DE55F1BDF7BBBAE /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
+		9559DF6CF393BF715EF7681E /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.11.0;
+				version = 0.12.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		62BC1C8E0B8BD3C7AD7FBF5C /* MCP */ = {
+		C25967215605B845080BBC70 /* MCP */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 85493A665DE55F1BDF7BBBAE /* XCRemoteSwiftPackageReference "swift-sdk" */;
+			package = 9559DF6CF393BF715EF7681E /* XCRemoteSwiftPackageReference "swift-sdk" */;
 			productName = MCP;
 		};
-		FC141B19827B212F66C6B12F /* Sparkle */ = {
+		C46FA2789D751A90430F82C1 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 14DC8BBFF034904E850006C4 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			package = 125BD098C0F5A7EABF0CC2B0 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 0F491FA55DE8803964163896 /* Project object */;
+	rootObject = BF5B538F4E0BD349ED39A303 /* Project object */;
 }

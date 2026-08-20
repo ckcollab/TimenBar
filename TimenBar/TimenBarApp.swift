@@ -25,12 +25,5 @@ struct TimenBarApp: App {
                 .environment(appModel)
                 .modelContainer(container)
         }
-
-        Window("Sync Conflicts", id: "conflicts") {
-            ConflictReviewView()
-                .environment(appModel)
-                .modelContainer(container)
-        }
-        .defaultSize(width: 720, height: 480)
     }
 }

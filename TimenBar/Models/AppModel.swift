@@ -13,6 +13,13 @@ enum AuthenticationState: Equatable {
 @MainActor
 @Observable
 final class AppModel {
+    private enum DefaultsKey {
+        static let accountID = "accountScopedStateAccountID"
+        static let lastTimerDraft = "lastTimerDraft"
+        static let focusedEntryID = "focusedEntryID"
+        static let focusedEntrySnapshot = "focusedEntrySnapshot"
+    }
+
     private let actionLogger = Logger(subsystem: "app.timenbar.TimenBar", category: "Actions")
     var authenticationState: AuthenticationState = .checking
     var account: TimenAccount?
@@ -20,20 +27,23 @@ final class AppModel {
     var tags: [TimenTag] = []
     var entries: [TimeEntry] = []
     var favorites: [Favorite] = []
-    var conflicts: [SyncConflict] = []
     var runningTimer: RunningTimer?
     var selectedDate = Date.now
     var now = Date.now
     var isLoading = false
-    var isSyncing = false
     var weekNavigationDirection: Int?
     var errorMessage: String?
-    var composerMode: TimerComposerMode?
+    var composerMode: TimerComposerMode? {
+        didSet {
+            if composerMode == nil { composerAccountID = nil }
+        }
+    }
     var idlePrompt: IdlePromptState?
     private(set) var lastTimerDraft: TimerDraft?
     private(set) var resumedEntryID: String?
     private(set) var focusedEntryID: String?
     private var focusedEntrySnapshot: TimeEntry?
+    private var composerAccountID: String?
 
     let container: ModelContainer
     let settings: AppSettings
@@ -42,6 +52,7 @@ final class AppModel {
 
     private let store: OfflineStore
     private let gateway: any TimenGateway
+    private let defaults: UserDefaults
     private let idleMonitor: IdleMonitor
     private let notificationService = NotificationService()
     private var heartbeat: Task<Void, Never>?
@@ -51,31 +62,29 @@ final class AppModel {
         container: ModelContainer,
         gateway: (any TimenGateway)? = nil,
         settings: AppSettings? = nil,
-        connectivity: ConnectivityMonitor? = nil
+        connectivity: ConnectivityMonitor? = nil,
+        defaults: UserDefaults = .standard,
+        startAutomatically: Bool = true
     ) {
         self.container = container
         self.gateway = gateway ?? TimenMCPGateway()
         self.settings = settings ?? AppSettings()
         self.connectivity = connectivity ?? ConnectivityMonitor()
+        self.defaults = defaults
         updater = UpdateController()
         store = OfflineStore(container: container)
         idleMonitor = IdleMonitor()
-        if let data = UserDefaults.standard.data(forKey: "lastTimerDraft") {
-            lastTimerDraft = try? JSONDecoder().decode(TimerDraft.self, from: data)
-        }
-        focusedEntryID = UserDefaults.standard.string(forKey: "focusedEntryID")
-        if let data = UserDefaults.standard.data(forKey: "focusedEntrySnapshot") {
-            focusedEntrySnapshot = try? JSONDecoder().decode(TimeEntry.self, from: data)
-        }
         loadCachedState()
-        startHeartbeat()
-        Task { await bootstrap() }
+        if startAutomatically {
+            startHeartbeat()
+            Task { await bootstrap() }
+        }
     }
 
     isolated deinit { heartbeat?.cancel() }
 
     var statusTitle: String {
-        guard settings.showElapsedInMenuBar, let runningTimer else { return "TimenBar" }
+        guard settings.showElapsedInMenuBar, runningTimer != nil else { return "TimenBar" }
         return runningDisplayDuration.statusTimerText
     }
 
@@ -99,29 +108,22 @@ final class AppModel {
 
     var quickStartEntry: TimeEntry? {
         if let focusedEntryID,
-           let focused = entries.first(where: { $0.remoteID == focusedEntryID && $0.syncState == .synced && $0.duration > 0 })
+           let focused = entries.first(where: { $0.remoteID == focusedEntryID && $0.duration > 0 })
         {
             return focused
         }
         if let focusedEntrySnapshot,
-           focusedEntrySnapshot.syncState == .synced,
            focusedEntrySnapshot.duration > 0
         {
             return focusedEntrySnapshot
         }
         return entries
-            .filter { $0.remoteID != nil && $0.syncState == .synced && $0.duration > 0 }
+            .filter { $0.remoteID != nil && $0.duration > 0 }
             .max(by: { $0.start < $1.start })
     }
 
     var statusSymbol: String {
-        if !conflicts.isEmpty { return "exclamationmark.triangle.fill" }
-        if pendingCount > 0 { return "arrow.triangle.2.circlepath" }
         return runningTimer == nil ? "timer" : "stopwatch.fill"
-    }
-
-    var pendingCount: Int {
-        (try? store.pendingMutations().count) ?? 0
     }
 
     var favoriteProjectIDs: Set<String> {
@@ -199,39 +201,57 @@ final class AppModel {
         errorMessage = nil
         do {
             try await gateway.authenticate()
-            authenticationState = .signedIn
             try await refreshAll()
+            authenticationState = .signedIn
         } catch {
             authenticationState = .signedOut
+            clearVisibleAccountState()
             errorMessage = error.localizedDescription
         }
     }
 
     func signOut() async {
-        do { try await gateway.signOut() }
-        catch { errorMessage = error.localizedDescription }
+        // Revoke local mutation authority before the first suspension point so
+        // a click queued behind Logout cannot submit Account A state.
         authenticationState = .signedOut
-        account = nil
-        runningTimer = nil
-        resumedEntryID = nil
-        try? store.discardActiveSegment()
-        idleMonitor.stop()
+        var signOutError: Error?
+        do { try store.clearAccountData() }
+        catch { signOutError = signOutError ?? error }
+        clearAccountScopedDefaults()
+        clearVisibleAccountState()
+        do { try await gateway.signOut() }
+        catch { signOutError = signOutError ?? error }
+        errorMessage = signOutError?.localizedDescription
     }
 
     func refreshAll() async throws {
-        guard connectivity.isOnline else { return }
+        guard connectivity.isOnline else { throw TimenBarError.networkUnavailable }
         isLoading = true
         defer { isLoading = false }
-        let account = try await gateway.account()
-        self.account = account
+        let remoteAccount = try await gateway.account()
+        let transition = try store.prepareForAccount(remoteAccount)
+        if transition != .unchanged {
+            clearAccountScopedDefaults()
+            clearVisibleAccountState()
+        } else if account == nil {
+            loadAccountScopedDefaults(for: remoteAccount.id)
+        }
+        account = remoteAccount
         async let projects = gateway.projects()
         async let tags = gateway.tags()
         async let timer = gateway.runningTimer()
         let week = visibleWeekInterval()
         async let entries = gateway.entries(from: week.start, to: week.end)
         let values = try await (projects, tags, timer, entries)
-        self.projects = values.0
-        self.tags = values.1
+        guard account?.id == remoteAccount.id,
+              try store.cachedAccount()?.id == remoteAccount.id
+        else { return }
+
+        try store.replaceProjects(values.0)
+        try store.replaceTags(values.1)
+        try store.replaceEntries(values.3, from: week.start, to: week.end)
+        let refreshedFavorites = try store.reconcileFavorites(with: values.0)
+
         let localContinuation = resumedEntryID == nil ? nil : runningTimer
         if let remoteTimer = values.2 {
             if resumedEntryID != nil {
@@ -243,11 +263,11 @@ final class AppModel {
         } else {
             runningTimer = localContinuation
         }
-        self.entries = mergePending(remote: values.3)
+        self.projects = values.0
+        self.tags = values.1
+        self.entries = values.3
+        favorites = refreshedFavorites
         rememberMostRecentTimer(from: values.3)
-        try store.replaceProjects(values.0)
-        try store.replaceTags(values.1)
-        try store.replaceSyncedEntries(values.3, from: week.start, to: week.end)
         configureIdleMonitor()
     }
 
@@ -263,35 +283,57 @@ final class AppModel {
         await loadWeek(containing: destination)
     }
 
-    func presentNewTimer() { composerMode = .new(.empty) }
+    func presentNewTimer() {
+        guard let accountID = account?.id else { return }
+        composerAccountID = accountID
+        composerMode = .new(.empty)
+    }
 
     func presentRunningTimer() {
-        guard let timer = runningTimer else { return }
+        guard let timer = runningTimer, let accountID = account?.id else { return }
+        composerAccountID = accountID
         composerMode = .running(timer)
     }
 
     func presentRestart(_ entry: TimeEntry) {
+        guard isCurrentEntry(entry) else {
+            errorMessage = "That entry no longer belongs to the active Timen account."
+            return
+        }
+        composerAccountID = account?.id
         composerMode = .restart(
             entry,
             TimerDraft(projectID: entry.projectID, tagIDs: entry.tags.map(\.id), note: entry.note, billable: true)
         )
     }
 
-    func presentEdit(_ entry: TimeEntry) { composerMode = .edit(entry) }
+    func presentEdit(_ entry: TimeEntry) {
+        guard isCurrentEntry(entry) else {
+            errorMessage = "That entry no longer belongs to the active Timen account."
+            return
+        }
+        composerAccountID = account?.id
+        composerMode = .edit(entry)
+    }
 
     func restartEntry(_ entry: TimeEntry, source: String = "entry") async {
         actionLogger.debug("restart-entry source=\(source, privacy: .public) entry=\(entry.remoteID ?? entry.id, privacy: .public)")
-        guard let remoteID = entry.remoteID, entry.syncState == .synced else {
-            errorMessage = "Only synchronized Timen entries can be restarted."
+        guard isCurrentEntry(entry) else {
+            errorMessage = "That entry no longer belongs to the active Timen account."
+            return
+        }
+        guard let remoteID = entry.remoteID else {
+            errorMessage = "Only Timen entries can be restarted."
             return
         }
         guard authenticationState == .signedIn, connectivity.isOnline else {
             errorMessage = "TimenBar must be online and connected to continue an entry."
             return
         }
+        guard let mutationAccountID = account?.id else { return }
         if runningTimer != nil {
             await stopTimer(at: .now, source: "replace-running:\(source)")
-            guard runningTimer == nil else { return }
+            guard isMutationContextCurrent(mutationAccountID), runningTimer == nil else { return }
         }
         let draft = TimerDraft(
             projectID: entry.projectID,
@@ -315,9 +357,10 @@ final class AppModel {
             syncState: .synced
         )
         lastTimerDraft = draft
+        persistLastTimerDraft()
         composerMode = nil
         try? store.discardActiveSegment()
-        try? store.saveSegment(PendingTimerSegment(
+        try? store.saveSegment(ActiveTimerSegment(
             id: UUID(),
             startedAt: startedAt,
             endedAt: nil,
@@ -334,27 +377,35 @@ final class AppModel {
             errorMessage = "TimenBar must be online and connected to start a timer."
             return
         }
+        guard let mutationAccountID = account?.id else { return }
+        if source == "timer-composer" {
+            guard composerAccountID == mutationAccountID, composerMode != nil else {
+                errorMessage = "That timer form belongs to a previous Timen account."
+                return
+            }
+        }
+        guard validateDraftReferences(draft) else { return }
         if runningTimer != nil {
             await stopTimer(at: .now, source: "replace-running:\(source)")
-            guard runningTimer == nil else { return }
+            guard isMutationContextCurrent(mutationAccountID), runningTimer == nil else { return }
         }
         do {
             let remote = try await gateway.startTimer(draft)
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             if let remoteID = remote.remoteID { focus(on: remoteID) }
             resumedEntryID = nil
             runningTimer = remote
             lastTimerDraft = draft
-            if let data = try? JSONEncoder().encode(draft) {
-                UserDefaults.standard.set(data, forKey: "lastTimerDraft")
-            }
+            persistLastTimerDraft()
             composerMode = nil
             try? store.discardActiveSegment()
-            try? store.saveSegment(PendingTimerSegment(
+            try? store.saveSegment(ActiveTimerSegment(
                 id: UUID(), startedAt: remote.startedAt, endedAt: nil,
                 draft: draft, remoteTimerID: remote.remoteID
             ))
             configureIdleMonitor()
         } catch {
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -381,6 +432,7 @@ final class AppModel {
             errorMessage = "TimenBar must be online and connected to stop a timer."
             return
         }
+        guard let mutationAccountID = account?.id else { return }
         idlePrompt = nil
         idleMonitor.stop()
         let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: true)
@@ -394,6 +446,7 @@ final class AppModel {
                     draft: draft,
                     duration: original.duration + addedDuration
                 )
+                guard isMutationContextCurrent(mutationAccountID) else { return }
                 runningTimer = nil
                 self.resumedEntryID = nil
                 idlePrompt = nil
@@ -407,6 +460,7 @@ final class AppModel {
                 return
             }
             var remote = try await gateway.stopTimer()
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             let timingChanged = abs(desiredEnd.timeIntervalSince(.now)) > 2
             let metadataChanged = remote.projectID != draft.projectID ||
                 Set(remote.tags.map(\.id)) != Set(draft.tagIDs) ||
@@ -418,6 +472,7 @@ final class AppModel {
                     start: timingChanged ? timer.startedAt : nil,
                     end: timingChanged ? desiredEnd : nil
                 )
+                guard isMutationContextCurrent(mutationAccountID) else { return }
             }
             runningTimer = nil
             resumedEntryID = nil
@@ -430,6 +485,7 @@ final class AppModel {
             try? store.deleteEntry(id: timer.id)
             try? store.upsertEntries([remote])
         } catch {
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             errorMessage = error.localizedDescription
             configureIdleMonitor()
         }
@@ -442,6 +498,14 @@ final class AppModel {
             return
         }
         guard var timer = runningTimer else { return }
+        guard let accountID = account?.id,
+              composerAccountID == accountID,
+              composerMode != nil
+        else {
+            errorMessage = "That timer form belongs to a previous Timen account."
+            return
+        }
+        guard validateDraftReferences(draft) else { return }
         let project = projects.first { $0.id == draft.projectID }
         timer.projectID = draft.projectID
         timer.projectName = project?.name
@@ -462,18 +526,32 @@ final class AppModel {
             errorMessage = "TimenBar must be online and connected to edit entries."
             return
         }
+        guard let mutationAccountID = account?.id else { return }
+        guard composerAccountID == mutationAccountID, composerMode != nil else {
+            errorMessage = "That timer form belongs to a previous Timen account."
+            return
+        }
+        guard isCurrentEntry(entry) else {
+            errorMessage = "That entry no longer belongs to the active Timen account."
+            return
+        }
+        guard validateDraftReferences(draft) else { return }
         guard let remoteID = entry.remoteID else {
-            errorMessage = "This local entry cannot be edited because offline syncing is disabled."
+            errorMessage = "Only entries already saved in Timen can be edited."
             return
         }
         do {
             let updated = try await gateway.updateEntry(id: remoteID, draft: draft, start: start, end: end)
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             composerMode = nil
             entries.removeAll { $0.id == entry.id || $0.id == updated.id }
             entries.append(updated)
             if let remoteID = updated.remoteID { focus(on: remoteID) }
             try? store.upsertEntries([updated])
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            guard isMutationContextCurrent(mutationAccountID) else { return }
+            errorMessage = error.localizedDescription
+        }
     }
 
     func deleteEntry(_ entry: TimeEntry) async {
@@ -481,25 +559,40 @@ final class AppModel {
             errorMessage = "TimenBar must be online and connected to delete entries."
             return
         }
+        guard let mutationAccountID = account?.id else { return }
+        guard isCurrentEntry(entry) else {
+            errorMessage = "That entry no longer belongs to the active Timen account."
+            return
+        }
         guard let remoteID = entry.remoteID else {
-            try? store.discardLocalEntryAndMutations(entryID: entry.id)
-            entries.removeAll { $0.id == entry.id }
+            errorMessage = "Only entries already saved in Timen can be deleted."
             return
         }
         do {
             try await gateway.deleteEntry(id: remoteID)
+            guard isMutationContextCurrent(mutationAccountID) else { return }
             entries.removeAll { $0.id == entry.id }
             if focusedEntryID == remoteID {
                 focusedEntryID = nil
                 focusedEntrySnapshot = nil
-                UserDefaults.standard.removeObject(forKey: "focusedEntryID")
-                UserDefaults.standard.removeObject(forKey: "focusedEntrySnapshot")
+                defaults.removeObject(forKey: DefaultsKey.focusedEntryID)
+                defaults.removeObject(forKey: DefaultsKey.focusedEntrySnapshot)
             }
             try? store.deleteEntry(id: entry.id)
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            guard isMutationContextCurrent(mutationAccountID) else { return }
+            errorMessage = error.localizedDescription
+        }
     }
 
     func toggleFavorite(projectID: String?) {
+        guard let accountID = account?.id,
+              composerAccountID == accountID,
+              composerMode != nil
+        else {
+            errorMessage = "That timer form belongs to a previous Timen account."
+            return
+        }
         guard let projectID, let project = projects.first(where: { $0.id == projectID }) else { return }
         let existing = favorites.filter { $0.projectID == projectID }
         if !existing.isEmpty {
@@ -526,6 +619,13 @@ final class AppModel {
     }
 
     func startFavorite(_ favorite: Favorite) async {
+        guard favorites.contains(favorite),
+              let projectID = favorite.projectID,
+              projects.contains(where: { $0.id == projectID })
+        else {
+            errorMessage = "That favorite no longer belongs to the active Timen account."
+            return
+        }
         let draft = TimerDraft(projectID: favorite.projectID, tagIDs: [], note: "", billable: true)
         await startTimer(draft, source: "favorite")
     }
@@ -549,42 +649,34 @@ final class AppModel {
         _ = prompt
     }
 
-    func syncNow() async {
-        guard connectivity.isOnline, authenticationState == .signedIn, !isSyncing else { return }
-        isSyncing = true
-        defer { isSyncing = false }
-        do { try await refreshAll() }
-        catch { errorMessage = error.localizedDescription }
-    }
-
-    func resolveConflict(_ conflict: SyncConflict, decision: ConflictDecision) async {
-        guard let mutation = try? store.mutation(id: conflict.mutationID) else {
-            try? store.resolveConflict(id: conflict.id)
-            conflicts = (try? store.conflicts()) ?? []
+    private func bootstrap() async {
+        guard await gateway.isAuthenticated() else {
+            try? store.clearAccountData()
+            clearAccountScopedDefaults()
+            clearVisibleAccountState()
+            authenticationState = .signedOut
             return
         }
-        do {
-            switch decision {
-            case .keepLocal: try await apply(mutation)
-            case .keepTimen: break
-            }
-            try store.setMutation(mutation.id, state: .applied)
-            try store.resolveConflict(id: conflict.id)
-            try store.removeAppliedMutations()
-            conflicts = try store.conflicts()
-            try await refreshAll()
-        } catch { errorMessage = error.localizedDescription }
-    }
 
-    private func bootstrap() async {
-        if await gateway.isAuthenticated() {
-            authenticationState = .signedIn
-            if connectivity.isOnline {
-                do { try await gateway.validateCapabilities(); try await refreshAll() }
-                catch { errorMessage = error.localizedDescription }
+        if !connectivity.isOnline {
+            if account != nil {
+                authenticationState = .signedIn
+            } else {
+                clearVisibleAccountState()
+                authenticationState = .signedOut
+                errorMessage = "Connect to Timen once before using the offline read cache."
             }
-        } else {
+            return
+        }
+
+        do {
+            try await gateway.validateCapabilities()
+            try await refreshAll()
+            authenticationState = .signedIn
+        } catch {
+            clearVisibleAccountState()
             authenticationState = .signedOut
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -593,7 +685,10 @@ final class AppModel {
             while !Task.isCancelled {
                 guard let self else { return }
                 now = .now
-                if connectivity.isOnline, !lastKnownOnline { await syncNow() }
+                if connectivity.isOnline, !lastKnownOnline, authenticationState == .signedIn {
+                    do { try await refreshAll() }
+                    catch { errorMessage = error.localizedDescription }
+                }
                 lastKnownOnline = connectivity.isOnline
                 try? await Task.sleep(for: .seconds(1))
             }
@@ -614,12 +709,54 @@ final class AppModel {
         }
     }
 
+    private func isCurrentEntry(_ entry: TimeEntry) -> Bool {
+        entries.contains(entry)
+    }
+
+    private func isMutationContextCurrent(_ accountID: String) -> Bool {
+        authenticationState == .signedIn && account?.id == accountID
+    }
+
+    private func validateDraftReferences(_ draft: TimerDraft) -> Bool {
+        if let projectID = draft.projectID,
+           !projects.contains(where: { $0.id == projectID })
+        {
+            errorMessage = "The selected project is not available for the active Timen account."
+            return false
+        }
+        let availableTagIDs = Set(tags.map(\.id))
+        guard Set(draft.tagIDs).isSubset(of: availableTagIDs) else {
+            errorMessage = "One or more selected tags are not available for the active Timen account."
+            return false
+        }
+        return true
+    }
+
     private func loadCachedState() {
-        try? store.discardAllQueuedWork()
+        let migrationKey = "didDiscardLegacyOfflineMutationState"
+        if !defaults.bool(forKey: migrationKey) {
+            do {
+                try store.discardLegacyOfflineMutationState()
+                defaults.set(true, forKey: migrationKey)
+            } catch {
+                actionLogger.error("legacy offline-state cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        let cachedAccount = try? store.cachedAccount()
+        guard let cachedAccount else {
+            // Legacy caches did not record an owner. They are unsafe to expose
+            // or reuse because remote IDs are only meaningful within an account.
+            try? store.clearAccountData()
+            clearAccountScopedDefaults()
+            clearVisibleAccountState()
+            return
+        }
+        account = cachedAccount
+        loadAccountScopedDefaults(for: cachedAccount.id)
         projects = (try? store.projects()) ?? []
         tags = (try? store.tags()) ?? []
-        favorites = (try? store.favorites()) ?? []
-        conflicts = (try? store.conflicts()) ?? []
+        favorites = (try? store.reconcileFavorites(with: projects)) ?? []
         let week = visibleWeekInterval()
         entries = (try? store.entries(from: week.start, to: week.end)) ?? []
         if let focusedEntryID,
@@ -627,16 +764,6 @@ final class AppModel {
         {
             focusedEntrySnapshot = focused
         }
-        let accidentalEntries = entries.filter {
-            guard $0.remoteID == nil, $0.syncState == .pending, $0.end != nil, $0.duration < 60 else { return false }
-            let candidate = $0
-            return entries.contains {
-                $0.remoteID != nil && $0.projectID == candidate.projectID && $0.note == candidate.note &&
-                    accountCalendar.isDate($0.start, inSameDayAs: candidate.start)
-            }
-        }
-        for entry in accidentalEntries { try? store.discardLocalEntryAndMutations(entryID: entry.id) }
-        entries.removeAll { entry in accidentalEntries.contains(where: { $0.id == entry.id }) }
         rememberMostRecentTimer(from: entries)
         if let segment = try? store.activeSegment() {
             let continuationID = segment.remoteTimerID?.hasPrefix("resume:") == true
@@ -654,88 +781,63 @@ final class AppModel {
                 note: segment.draft.note,
                 tags: tags.filter { segment.draft.tagIDs.contains($0.id) },
                 billable: segment.draft.billable,
-                syncState: .pending
+                syncState: .synced
             )
         }
     }
 
-    private func apply(_ mutation: QueuedMutation) async throws {
-        let decoder = JSONDecoder()
-        switch mutation.kind {
-        case .startTimer:
-            let payload = try decoder.decode(StartTimerPayload.self, from: mutation.payload)
-            if let running = try await gateway.runningTimer(), abs(running.startedAt.timeIntervalSince(payload.requestedAt)) < 120 {
-                runningTimer = running
-                try? store.updateActiveSegment(remoteTimerID: running.remoteID)
-                return
-            }
-            if payload.requestedAt.timeIntervalSinceNow < -120 {
-                _ = try await gateway.logTime(start: payload.requestedAt, end: .now, draft: payload.draft)
-            }
-            runningTimer = try await gateway.startTimer(payload.draft)
-            if let runningTimer {
-                _ = try? store.closeActiveSegment(at: runningTimer.startedAt)
-                try? store.saveSegment(PendingTimerSegment(
-                    id: UUID(),
-                    startedAt: runningTimer.startedAt,
-                    endedAt: nil,
-                    draft: payload.draft,
-                    remoteTimerID: runningTimer.remoteID
-                ))
-            }
-        case .stopTimer:
-            let payload = try decoder.decode(StopTimerPayload.self, from: mutation.payload)
-            var entry = try await gateway.stopTimer()
-            if let id = entry.remoteID {
-                let draft = TimerDraft(projectID: payload.timer.projectID, tagIDs: payload.timer.tags.map(\.id), note: payload.timer.note, billable: payload.timer.billable)
-                entry = try await gateway.updateEntry(id: id, draft: draft, start: payload.timer.startedAt, end: payload.desiredEnd)
-            }
-            try store.upsertEntries([entry])
-        case .logTime:
-            let payload = try decoder.decode(LogTimePayload.self, from: mutation.payload)
-            let entry = try await gateway.logTime(start: payload.start, end: payload.end, draft: payload.draft)
-            try store.deleteEntry(id: payload.localEntryID)
-            try store.upsertEntries([entry])
-        case .updateEntry:
-            let payload = try decoder.decode(UpdateEntryPayload.self, from: mutation.payload)
-            let entry = try await gateway.updateEntry(id: payload.entryID, draft: payload.draft, start: payload.start, end: payload.end)
-            try store.upsertEntries([entry])
-        case .deleteEntry:
-            let payload = try decoder.decode(DeleteEntryPayload.self, from: mutation.payload)
-            try await gateway.deleteEntry(id: payload.entryID)
+    private func loadAccountScopedDefaults(for accountID: String) {
+        guard defaults.string(forKey: DefaultsKey.accountID) == accountID else {
+            clearAccountScopedDefaults()
+            return
+        }
+        if let data = defaults.data(forKey: DefaultsKey.lastTimerDraft) {
+            lastTimerDraft = try? JSONDecoder().decode(TimerDraft.self, from: data)
+        }
+        focusedEntryID = defaults.string(forKey: DefaultsKey.focusedEntryID)
+        if let data = defaults.data(forKey: DefaultsKey.focusedEntrySnapshot) {
+            focusedEntrySnapshot = try? JSONDecoder().decode(TimeEntry.self, from: data)
         }
     }
 
-    private func reconcile(_ mutation: QueuedMutation) async -> Bool {
-        let decoder = JSONDecoder()
-        do {
-            switch mutation.kind {
-            case .startTimer:
-                let payload = try decoder.decode(StartTimerPayload.self, from: mutation.payload)
-                guard let timer = try await gateway.runningTimer() else { return false }
-                return abs(timer.startedAt.timeIntervalSince(payload.requestedAt)) < 120 && timer.projectID == payload.draft.projectID
-            case .logTime:
-                let payload = try decoder.decode(LogTimePayload.self, from: mutation.payload)
-                let matches = try await gateway.entries(from: payload.start.addingTimeInterval(-60), to: payload.end.addingTimeInterval(60))
-                return matches.contains { abs($0.start.timeIntervalSince(payload.start)) < 2 && abs(($0.end ?? .distantFuture).timeIntervalSince(payload.end)) < 2 && $0.projectID == payload.draft.projectID }
-            case .stopTimer:
-                return try await gateway.runningTimer() == nil
-            case .updateEntry:
-                let payload = try decoder.decode(UpdateEntryPayload.self, from: mutation.payload)
-                let interval = visibleWeekInterval()
-                return try await gateway.entries(from: interval.start, to: interval.end).contains { $0.remoteID == payload.entryID && $0.note == payload.draft.note }
-            case .deleteEntry:
-                let payload = try decoder.decode(DeleteEntryPayload.self, from: mutation.payload)
-                let interval = visibleWeekInterval()
-                return try await !gateway.entries(from: interval.start, to: interval.end).contains { $0.remoteID == payload.entryID }
-            }
-        } catch { return false }
+    private func clearAccountScopedDefaults() {
+        defaults.removeObject(forKey: DefaultsKey.accountID)
+        defaults.removeObject(forKey: DefaultsKey.lastTimerDraft)
+        defaults.removeObject(forKey: DefaultsKey.focusedEntryID)
+        defaults.removeObject(forKey: DefaultsKey.focusedEntrySnapshot)
     }
 
-    private func mergePending(remote: [TimeEntry]) -> [TimeEntry] {
-        let pending = entries.filter { $0.syncState != .synced }
-        let remoteIDs = Set(remote.compactMap(\.remoteID))
-        return remote + pending.filter { $0.remoteID.map { !remoteIDs.contains($0) } ?? true }
+    private func claimAccountScopedDefaults() -> Bool {
+        guard let accountID = account?.id else { return false }
+        if defaults.string(forKey: DefaultsKey.accountID) != accountID {
+            clearAccountScopedDefaults()
+            defaults.set(accountID, forKey: DefaultsKey.accountID)
+        }
+        return true
+    }
+
+    private func clearVisibleAccountState() {
+        account = nil
+        projects = []
+        tags = []
+        entries = []
+        favorites = []
+        runningTimer = nil
+        resumedEntryID = nil
+        focusedEntryID = nil
+        focusedEntrySnapshot = nil
+        lastTimerDraft = nil
+        composerAccountID = nil
+        composerMode = nil
+        idlePrompt = nil
+        idleMonitor.stop()
+    }
+
+    private func persistLastTimerDraft() {
+        guard claimAccountScopedDefaults(), let lastTimerDraft,
+              let data = try? JSONEncoder().encode(lastTimerDraft)
+        else { return }
+        defaults.set(data, forKey: DefaultsKey.lastTimerDraft)
     }
 
     private func visibleWeekInterval() -> DateInterval {
@@ -752,18 +854,6 @@ final class AppModel {
             ?? DateInterval(start: accountCalendar.startOfDay(for: date), duration: 86_400)
     }
 
-    private func summary(_ entry: TimeEntry) -> String {
-        "\(entry.projectName ?? "Unassigned") · \(entry.duration.timerText) · \(entry.note)"
-    }
-
-    private func isPermanentServerError(_ error: Error) -> Bool {
-        guard let error = error as? TimenBarError else { return false }
-        return switch error {
-        case .networkUnavailable: false
-        case .notAuthenticated, .incompatibleServer, .invalidResponse, .oauth, .conflict: true
-        }
-    }
-
     private func rememberMostRecentTimer(from entries: [TimeEntry]) {
         guard let entry = entries.max(by: { $0.start < $1.start }) else { return }
         if focusedEntryID == nil {
@@ -778,17 +868,18 @@ final class AppModel {
                 note: entry.note,
                 billable: entry.billable
             )
+            persistLastTimerDraft()
         }
     }
 
     private func focus(on remoteID: String?) {
-        guard let remoteID else { return }
+        guard let remoteID, claimAccountScopedDefaults() else { return }
         focusedEntryID = remoteID
-        UserDefaults.standard.set(remoteID, forKey: "focusedEntryID")
+        defaults.set(remoteID, forKey: DefaultsKey.focusedEntryID)
         if let entry = entries.first(where: { $0.remoteID == remoteID }) {
             focusedEntrySnapshot = entry
             if let data = try? JSONEncoder().encode(entry) {
-                UserDefaults.standard.set(data, forKey: "focusedEntrySnapshot")
+                defaults.set(data, forKey: DefaultsKey.focusedEntrySnapshot)
             }
         }
     }
@@ -801,13 +892,16 @@ final class AppModel {
             entries = cached
             return
         }
+        guard let requestAccountID = account?.id else { return }
         do {
             let remote = try await gateway.entries(from: week.start, to: week.end)
+            guard authenticationState == .signedIn, account?.id == requestAccountID else { return }
             selectedDate = destination
-            entries = mergePending(remote: remote)
-            try store.replaceSyncedEntries(remote, from: week.start, to: week.end)
+            entries = remote
+            try store.replaceEntries(remote, from: week.start, to: week.end)
             rememberMostRecentTimer(from: remote)
         } catch {
+            guard authenticationState == .signedIn, account?.id == requestAccountID else { return }
             errorMessage = error.localizedDescription
         }
     }

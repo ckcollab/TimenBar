@@ -1,9 +1,7 @@
-import AppKit
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var settings = appModel.settings
@@ -69,44 +67,6 @@ struct SettingsView: View {
                 }
             }
             .tabItem { Label("Tracking", systemImage: "stopwatch") }
-
-            settingsPage {
-                SettingsCard(title: "Sync status", systemImage: "arrow.triangle.2.circlepath") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 10) {
-                            SettingsMetric(
-                                label: "Connection",
-                                value: appModel.connectivity.isOnline ? "Online" : "Offline",
-                                systemImage: appModel.connectivity.isOnline ? "wifi" : "wifi.slash"
-                            )
-                            SettingsMetric(
-                                label: "Queued",
-                                value: "\(appModel.pendingCount)",
-                                systemImage: "clock.arrow.circlepath"
-                            )
-                            SettingsMetric(
-                                label: "Conflicts",
-                                value: "\(appModel.conflicts.count)",
-                                systemImage: "exclamationmark.triangle"
-                            )
-                        }
-                        Divider()
-                        HStack(spacing: 10) {
-                            Button("Sync Now") { Task { await appModel.syncNow() } }
-                                .disabled(
-                                    !appModel.connectivity.isOnline ||
-                                        appModel.authenticationState != .signedIn
-                                )
-                            Button("Review Conflicts") {
-                                openWindow(id: "conflicts")
-                                NSApp.activate(ignoringOtherApps: true)
-                            }
-                            .disabled(appModel.conflicts.isEmpty)
-                        }
-                    }
-                }
-            }
-            .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
 
             settingsPage {
                 SettingsCard(title: "Updates", systemImage: "arrow.down.circle") {
@@ -215,30 +175,5 @@ private struct SettingsValueRow: View {
                 .textSelection(.enabled)
             Spacer(minLength: 0)
         }
-    }
-}
-
-private struct SettingsMetric: View {
-    let label: String
-    let value: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.body.weight(.medium))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
 }

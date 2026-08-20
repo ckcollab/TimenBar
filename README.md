@@ -4,7 +4,7 @@
 
 <h1 align="center">TimenBar</h1>
 
-TimenBar is an unofficial, native macOS menu-bar client for [Timen](https://www.gettimen.com). It tracks live time, keeps a durable offline outbox, detects idle time without Accessibility permission, and connects only through Timen's documented OAuth-enabled MCP endpoint.
+TimenBar is an unofficial, native macOS menu-bar client for [Timen](https://www.gettimen.com). It tracks live time, keeps a read-only local cache, detects idle time without Accessibility permission, and connects only through Timen's documented OAuth-enabled MCP endpoint.
 
 TimenBar is independent software and is not affiliated with or endorsed by Timen.
 
@@ -24,7 +24,13 @@ open TimenBar.xcodeproj
 
 Choose the `TimenBar` scheme and Run. The app is an `LSUIElement` accessory app, so it appears only in the menu bar. The main status item opens the weekly panel; the adjacent play/pause item restarts the most recent timer or stops the running timer.
 
-The project pins the official Swift MCP SDK to `0.11.0` and Sparkle to `2.9.2`. Xcode 26.6 diagnoses two captured continuation flags inside MCP 0.11.0 as Swift 6 data races. `bootstrap.sh` applies the small reviewed compatibility patch in `patches/` to the resolved checkout; no API behavior or version is changed.
+The project pins the official Swift MCP SDK to `0.12.1` and Sparkle to `2.9.2`.
+
+## Time-entry behavior
+
+Starting, stopping, editing, continuing, and deleting time require an active Timen connection. TimenBar does not queue changes while offline; cached projects, tags, and entries remain available for reference.
+
+All time started or edited in TimenBar is submitted as billable. Editing an existing non-billable entry in TimenBar will make that entry billable.
 
 ## Releasing
 

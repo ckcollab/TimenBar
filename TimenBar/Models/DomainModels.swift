@@ -1,11 +1,7 @@
 import Foundation
 
-enum SyncState: String, Codable, CaseIterable, Sendable {
+enum SyncState: String, Codable, Sendable {
     case synced
-    case pending
-    case sending
-    case conflict
-    case failed
 }
 
 struct TimenAccount: Codable, Hashable, Sendable {
@@ -126,85 +122,12 @@ struct Favorite: Codable, Hashable, Identifiable, Sendable {
     var sortOrder: Int
 }
 
-enum OutboxMutationKind: String, Codable, Sendable {
-    case startTimer
-    case stopTimer
-    case logTime
-    case updateEntry
-    case deleteEntry
-}
-
-enum OutboxMutationState: String, Codable, Sendable {
-    case pending
-    case sending
-    case applied
-    case needsReview
-    case failed
-}
-
-struct QueuedMutation: Codable, Hashable, Identifiable, Sendable {
-    var id: UUID
-    var sequence: Int64
-    var kind: OutboxMutationKind
-    var entryID: String?
-    var payload: Data
-    var state: OutboxMutationState
-    var attempts: Int
-    var createdAt: Date
-    var lastError: String?
-}
-
-struct PendingTimerSegment: Codable, Hashable, Identifiable, Sendable {
+struct ActiveTimerSegment: Codable, Hashable, Identifiable, Sendable {
     var id: UUID
     var startedAt: Date
     var endedAt: Date?
     var draft: TimerDraft
     var remoteTimerID: String?
-}
-
-struct StartTimerPayload: Codable, Hashable, Sendable {
-    var draft: TimerDraft
-    var requestedAt: Date
-}
-
-struct StopTimerPayload: Codable, Hashable, Sendable {
-    var timer: RunningTimer
-    var desiredEnd: Date
-}
-
-struct LogTimePayload: Codable, Hashable, Sendable {
-    var localEntryID: String
-    var start: Date
-    var end: Date
-    var draft: TimerDraft
-}
-
-struct UpdateEntryPayload: Codable, Hashable, Sendable {
-    var entryID: String
-    var draft: TimerDraft
-    var start: Date?
-    var end: Date?
-    var baseSummary: String
-}
-
-struct DeleteEntryPayload: Codable, Hashable, Sendable {
-    var entryID: String
-    var baseSummary: String
-}
-
-struct SyncConflict: Codable, Hashable, Identifiable, Sendable {
-    var id: UUID
-    var mutationID: UUID
-    var title: String
-    var explanation: String
-    var localSummary: String
-    var remoteSummary: String
-    var createdAt: Date
-}
-
-enum ConflictDecision: Sendable {
-    case keepLocal
-    case keepTimen
 }
 
 struct DaySummary: Hashable, Identifiable, Sendable {
@@ -234,10 +157,10 @@ enum TimenBarError: LocalizedError, Sendable {
         switch self {
         case .notAuthenticated: "Sign in to Timen first."
         case let .incompatibleServer(tools): "Timen is missing required tools: \(tools.joined(separator: ", "))."
-        case .networkUnavailable: "Timen is currently unreachable. The change was queued."
+        case .networkUnavailable: "Timen is currently unreachable. Check your connection and try again."
         case let .invalidResponse(message): "Timen returned an unexpected response: \(message)"
         case let .oauth(message): "Sign-in failed: \(message)"
-        case let .conflict(message): "This change needs review: \(message)"
+        case let .conflict(message): "Timen rejected the change: \(message)"
         }
     }
 }

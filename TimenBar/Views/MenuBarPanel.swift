@@ -3,7 +3,6 @@ import SwiftUI
 
 struct MenuBarPanel: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.openWindow) private var openWindow
     let showSettings: () -> Void
 
     var body: some View {
@@ -49,14 +48,8 @@ struct MenuBarPanel: View {
             Text(appModel.selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                 .font(.title3.weight(.semibold))
             Spacer()
-            if appModel.isSyncing {
+            if appModel.isLoading {
                 ProgressView().controlSize(.small).tint(.white)
-            } else if appModel.pendingCount > 0 {
-                Label("\(appModel.pendingCount)", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(.white.opacity(0.18), in: Capsule())
             }
             Button {
                 Task { try? await appModel.refreshAll() }
@@ -118,20 +111,10 @@ struct MenuBarPanel: View {
                 Label("New timer", systemImage: "plus")
             }
             .buttonStyle(.plain)
-            .disabled(appModel.authenticationState != .signedIn)
+            .disabled(appModel.authenticationState != .signedIn || !appModel.connectivity.isOnline)
+            .help(appModel.connectivity.isOnline ? "Start a timer" : "An internet connection is required")
 
             Spacer()
-
-            if !appModel.conflicts.isEmpty {
-                Button {
-                    openWindow(id: "conflicts")
-                    NSApp.activate(ignoringOtherApps: true)
-                } label: {
-                    Label("Conflicts", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-                .buttonStyle(.plain)
-            }
 
             Menu {
                 Button {

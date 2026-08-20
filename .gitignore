@@ -2,9 +2,11 @@
 .env
 DerivedData/
 .derivedData/
+.derivedData*/
 .sourcePackages/
 .packageCache/
 .modulecache/
+.modulecache-*/
 .cache/
 .build/
 build/
