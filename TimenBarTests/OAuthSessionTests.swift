@@ -4,6 +4,59 @@ import XCTest
 @testable import TimenBar
 
 final class OAuthSessionTests: XCTestCase {
+    func testCallbackSuccessPageIsBrandedSelfContainedAndNotCached() throws {
+        let html = OAuthCallbackPage.successHTML
+        XCTAssertTrue(html.contains("TimenBar authorization received"))
+        XCTAssertTrue(html.contains("Authorization received"))
+        XCTAssertTrue(html.contains("finish connecting to Timen"))
+        XCTAssertTrue(html.contains("id=\"logo-gradient\""))
+        XCTAssertTrue(html.contains("prefers-color-scheme: dark"))
+        XCTAssertTrue(html.contains("<main aria-labelledby=\"title\">"))
+        XCTAssertFalse(html.contains("<script"))
+        XCTAssertFalse(html.contains("src=\"http"))
+        XCTAssertFalse(html.contains("href=\"http"))
+        XCTAssertFalse(html.contains("authorization_code"))
+
+        let response = String(decoding: OAuthCallbackPage.successResponse(), as: UTF8.self)
+        let parts = response.components(separatedBy: "\r\n\r\n")
+        XCTAssertEqual(parts.count, 2)
+        let headers = try XCTUnwrap(parts.first)
+        let body = try XCTUnwrap(parts.last)
+        XCTAssertTrue(headers.contains("Content-Type: text/html; charset=utf-8"))
+        XCTAssertTrue(headers.contains("Cache-Control: no-store"))
+        XCTAssertTrue(headers.contains("Content-Security-Policy: default-src 'none'"))
+        XCTAssertTrue(headers.contains("X-Content-Type-Options: nosniff"))
+        XCTAssertTrue(headers.contains("Referrer-Policy: no-referrer"))
+        XCTAssertEqual(body, html)
+
+        let contentLengthLine = try XCTUnwrap(
+            headers.components(separatedBy: "\r\n").first { $0.hasPrefix("Content-Length: ") }
+        )
+        let contentLength = try XCTUnwrap(Int(contentLengthLine.dropFirst("Content-Length: ".count)))
+        XCTAssertEqual(contentLength, body.utf8.count)
+    }
+
+    func testLoadedTokensStayInMemoryForTheSession() async throws {
+        let keychain = KeychainStore(service: "app.timenbar.tests.oauth.cache.\(UUID().uuidString)")
+        let tokens = OAuthTokenSet(
+            accessToken: "cached-access-token",
+            tokenType: "Bearer",
+            refreshToken: "cached-refresh-token",
+            expiresAt: .now.addingTimeInterval(600)
+        )
+        try await keychain.save(tokens, account: "tokens")
+        let oauth = OAuthSession(keychain: keychain)
+
+        let initiallyAuthenticated = await oauth.isAuthenticated()
+        XCTAssertTrue(initiallyAuthenticated)
+        try await keychain.delete(account: "tokens")
+
+        let stillAuthenticated = await oauth.isAuthenticated()
+        XCTAssertTrue(stillAuthenticated)
+        let accessToken = try await oauth.accessToken()
+        XCTAssertEqual(accessToken, "cached-access-token")
+    }
+
     func testLoopbackTimeoutResumesWithoutAWebCallback() async throws {
         let server = LoopbackCallbackServer(sleep: { _ in })
         _ = try await server.start()
@@ -159,6 +212,49 @@ final class OAuthSessionTests: XCTestCase {
         XCTAssertEqual(afterLogout.clientID, first.clientID)
         XCTAssertEqual(afterLogout.redirectURI, afterLogoutRedirect)
         XCTAssertEqual(OAuthRequestRecorder.shared.registrationRequestCount, 1)
+    }
+
+    func testSignOutDeletesLocalTokensWithoutWaitingForRemoteRevocation() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OAuthBlockingURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        let keychain = KeychainStore(service: "app.timenbar.tests.oauth.signout.\(UUID().uuidString)")
+        addTeardownBlock {
+            try await keychain.delete(account: "tokens")
+            try await keychain.delete(account: "registration")
+        }
+        try await keychain.save(
+            OAuthTokenSet(
+                accessToken: "access-token",
+                tokenType: "Bearer",
+                refreshToken: "refresh-token",
+                expiresAt: .now.addingTimeInterval(600)
+            ),
+            account: "tokens"
+        )
+        try await keychain.save(
+            OAuthClientRegistration(
+                clientID: "registered-client",
+                redirectURI: try XCTUnwrap(URL(string: "http://127.0.0.1:41001/oauth/callback"))
+            ),
+            account: "registration"
+        )
+
+        let oauth = OAuthSession(session: session, keychain: keychain)
+        let completed = expectation(description: "Local sign-out completes")
+        let signOut = Task {
+            defer { completed.fulfill() }
+            try await oauth.signOut()
+        }
+
+        await fulfillment(of: [completed], timeout: 1)
+        _ = try await signOut.value
+        let storedTokens = try await keychain.load(OAuthTokenSet.self, account: "tokens")
+        XCTAssertNil(storedTokens)
+        let isAuthenticated = await oauth.isAuthenticated()
+        XCTAssertFalse(isAuthenticated)
     }
 
     func testOnlyClientAndRedirectErrorsInvalidateRegistration() {
@@ -500,6 +596,16 @@ private final class OAuthTestURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: error)
         }
     }
+
+    override func stopLoading() {}
+}
+
+private final class OAuthBlockingURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with _: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {}
 
     override func stopLoading() {}
 }

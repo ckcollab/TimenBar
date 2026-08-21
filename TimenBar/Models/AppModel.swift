@@ -33,9 +33,19 @@ final class AppModel {
     var isLoading = false
     var weekNavigationDirection: Int?
     var errorMessage: String?
+    private(set) var isAuthenticationTransitioning = false
+    private(set) var isRefreshingComposerProjects = false
+    private(set) var composerProjectRefreshMessage: String?
     var composerMode: TimerComposerMode? {
         didSet {
-            if composerMode == nil { composerAccountID = nil }
+            if composerMode == nil {
+                composerAccountID = nil
+                composerSessionID = nil
+                composerProjectRefreshTask?.cancel()
+                composerProjectRefreshTask = nil
+                isRefreshingComposerProjects = false
+                composerProjectRefreshMessage = nil
+            }
         }
     }
     var idlePrompt: IdlePromptState?
@@ -44,6 +54,10 @@ final class AppModel {
     private(set) var focusedEntryID: String?
     private var focusedEntrySnapshot: TimeEntry?
     private var composerAccountID: String?
+    private var composerSessionID: UUID?
+    private var composerProjectRefreshTask: Task<Void, Never>?
+    private var projectRefreshSequence: UInt64 = 0
+    private var publishedProjectRefreshSequence: UInt64 = 0
 
     let container: ModelContainer
     let settings: AppSettings
@@ -56,6 +70,8 @@ final class AppModel {
     private let idleMonitor: IdleMonitor
     private let notificationService = NotificationService()
     private var heartbeat: Task<Void, Never>?
+    private var signInTask: Task<Void, Never>?
+    private var signInAttemptID: UUID?
     private var lastKnownOnline = true
 
     init(
@@ -81,7 +97,10 @@ final class AppModel {
         }
     }
 
-    isolated deinit { heartbeat?.cancel() }
+    isolated deinit {
+        heartbeat?.cancel()
+        signInTask?.cancel()
+    }
 
     var statusTitle: String {
         guard settings.showElapsedInMenuBar, runningTimer != nil else { return "TimenBar" }
@@ -101,9 +120,19 @@ final class AppModel {
 
     var isContinuingEntry: Bool { resumedEntryID != nil }
 
+    private var resumedBaseEntry: TimeEntry? {
+        guard let resumedEntryID else { return nil }
+        if let visible = entries.first(where: { $0.remoteID == resumedEntryID }) {
+            return visible
+        }
+        if focusedEntrySnapshot?.remoteID == resumedEntryID {
+            return focusedEntrySnapshot
+        }
+        return nil
+    }
+
     private var resumedBaseEntryDuration: TimeInterval {
-        guard let resumedEntryID else { return 0 }
-        return entries.first(where: { $0.remoteID == resumedEntryID })?.duration ?? 0
+        resumedBaseEntry?.duration ?? 0
     }
 
     var quickStartEntry: TimeEntry? {
@@ -196,24 +225,130 @@ final class AppModel {
     }
 
     func signIn() async {
-        guard authenticationState != .signingIn else { return }
+        guard !isAuthenticationTransitioning else { return }
+        if authenticationState == .signingIn {
+            await signInTask?.value
+            return
+        }
+        let task = startSignInAttempt()
+        await task.value
+    }
+
+    func retrySignIn() async {
+        guard authenticationState == .signingIn, !isAuthenticationTransitioning else { return }
+        isAuthenticationTransitioning = true
+        let previousTask = cancelPendingSignInAttempt()
+        await previousTask?.value
+        signInTask = nil
+
+        if let cleanupError = await discardAuthenticationArtifacts() {
+            authenticationState = .signedOut
+            errorMessage = "Couldn’t restart sign-in safely because TimenBar could not clear the previous credentials. \(cleanupError.localizedDescription)"
+            isAuthenticationTransitioning = false
+            return
+        }
+
+        guard !Task.isCancelled, authenticationState == .signingIn else {
+            authenticationState = .signedOut
+            isAuthenticationTransitioning = false
+            return
+        }
+
+        let replacementTask = startSignInAttempt()
+        isAuthenticationTransitioning = false
+        await replacementTask.value
+    }
+
+    func cancelSignIn() async {
+        guard authenticationState == .signingIn, !isAuthenticationTransitioning else { return }
+        isAuthenticationTransitioning = true
+        let previousTask = cancelPendingSignInAttempt()
+        await previousTask?.value
+        signInTask = nil
+
+        let cancellationError = await discardAuthenticationArtifacts()
+
+        authenticationState = .signedOut
+        if let cancellationError {
+            errorMessage = "Sign-in was cancelled, but TimenBar could not remove its saved credentials. \(cancellationError.localizedDescription)"
+        } else {
+            errorMessage = nil
+        }
+        isAuthenticationTransitioning = false
+    }
+
+    private func startSignInAttempt() -> Task<Void, Never> {
+        let attemptID = UUID()
         authenticationState = .signingIn
         errorMessage = nil
+        signInAttemptID = attemptID
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performSignIn(attemptID: attemptID)
+        }
+        signInTask = task
+        return task
+    }
+
+    private func performSignIn(attemptID: UUID) async {
+        defer {
+            if signInAttemptID == attemptID {
+                signInAttemptID = nil
+                signInTask = nil
+            }
+        }
+
         do {
+            try Task.checkCancellation()
             try await gateway.authenticate()
+            try Task.checkCancellation()
             try await refreshAll()
+            try Task.checkCancellation()
+            guard signInAttemptID == attemptID else { return }
             authenticationState = .signedIn
         } catch {
+            guard signInAttemptID == attemptID else { return }
+            isAuthenticationTransitioning = true
+            let cleanupError = await discardAuthenticationArtifacts()
+            guard signInAttemptID == attemptID else { return }
             authenticationState = .signedOut
-            clearVisibleAccountState()
-            errorMessage = error.localizedDescription
+            if let cleanupError {
+                errorMessage = "Sign-in failed, and TimenBar could not remove its saved credentials. \(cleanupError.localizedDescription)"
+            } else if error is CancellationError {
+                errorMessage = nil
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            isAuthenticationTransitioning = false
         }
+    }
+
+    private func cancelPendingSignInAttempt() -> Task<Void, Never>? {
+        let task = signInTask
+        signInAttemptID = nil
+        task?.cancel()
+        return task
+    }
+
+    private func discardAuthenticationArtifacts() async -> Error? {
+        var cleanupError: Error?
+        do { try store.clearAccountData() }
+        catch { cleanupError = cleanupError ?? error }
+        clearAccountScopedDefaults()
+        clearVisibleAccountState()
+        do { try await gateway.signOut() }
+        catch { cleanupError = cleanupError ?? error }
+        return cleanupError
     }
 
     func signOut() async {
         // Revoke local mutation authority before the first suspension point so
         // a click queued behind Logout cannot submit Account A state.
+        isAuthenticationTransitioning = true
+        let pendingSignInTask = cancelPendingSignInAttempt()
         authenticationState = .signedOut
+        await pendingSignInTask?.value
+        signInTask = nil
         var signOutError: Error?
         do { try store.clearAccountData() }
         catch { signOutError = signOutError ?? error }
@@ -222,6 +357,7 @@ final class AppModel {
         do { try await gateway.signOut() }
         catch { signOutError = signOutError ?? error }
         errorMessage = signOutError?.localizedDescription
+        isAuthenticationTransitioning = false
     }
 
     func refreshAll() async throws {
@@ -237,6 +373,7 @@ final class AppModel {
             loadAccountScopedDefaults(for: remoteAccount.id)
         }
         account = remoteAccount
+        let projectRefreshID = beginProjectRefreshRequest()
         async let projects = gateway.projects()
         async let tags = gateway.tags()
         async let timer = gateway.runningTimer()
@@ -247,10 +384,9 @@ final class AppModel {
               try store.cachedAccount()?.id == remoteAccount.id
         else { return }
 
-        try store.replaceProjects(values.0)
+        try installProjects(values.0, for: remoteAccount.id, refreshID: projectRefreshID)
         try store.replaceTags(values.1)
         try store.replaceEntries(values.3, from: week.start, to: week.end)
-        let refreshedFavorites = try store.reconcileFavorites(with: values.0)
 
         let localContinuation = resumedEntryID == nil ? nil : runningTimer
         if let remoteTimer = values.2 {
@@ -263,10 +399,8 @@ final class AppModel {
         } else {
             runningTimer = localContinuation
         }
-        self.projects = values.0
         self.tags = values.1
         self.entries = values.3
-        favorites = refreshedFavorites
         rememberMostRecentTimer(from: values.3)
         configureIdleMonitor()
     }
@@ -285,14 +419,12 @@ final class AppModel {
 
     func presentNewTimer() {
         guard let accountID = account?.id else { return }
-        composerAccountID = accountID
-        composerMode = .new(.empty)
+        presentComposer(.new(.empty), for: accountID)
     }
 
     func presentRunningTimer() {
         guard let timer = runningTimer, let accountID = account?.id else { return }
-        composerAccountID = accountID
-        composerMode = .running(timer)
+        presentComposer(.running(timer), for: accountID)
     }
 
     func presentRestart(_ entry: TimeEntry) {
@@ -300,11 +432,11 @@ final class AppModel {
             errorMessage = "That entry no longer belongs to the active Timen account."
             return
         }
-        composerAccountID = account?.id
-        composerMode = .restart(
+        guard let accountID = account?.id else { return }
+        presentComposer(.restart(
             entry,
             TimerDraft(projectID: entry.projectID, tagIDs: entry.tags.map(\.id), note: entry.note, billable: true)
-        )
+        ), for: accountID)
     }
 
     func presentEdit(_ entry: TimeEntry) {
@@ -312,8 +444,8 @@ final class AppModel {
             errorMessage = "That entry no longer belongs to the active Timen account."
             return
         }
-        composerAccountID = account?.id
-        composerMode = .edit(entry)
+        guard let accountID = account?.id else { return }
+        presentComposer(.edit(entry), for: accountID)
     }
 
     func restartEntry(_ entry: TimeEntry, source: String = "entry") async {
@@ -410,6 +542,45 @@ final class AppModel {
         }
     }
 
+    func logTime(start: Date, end: Date, draft: TimerDraft, source: String = "composer") async {
+        let draft = draft.enforcingBillable
+        actionLogger.debug("log-time source=\(source, privacy: .public) project=\(draft.projectID ?? "unassigned", privacy: .public)")
+        guard authenticationState == .signedIn, connectivity.isOnline else {
+            errorMessage = "TimenBar must be online and connected to save time."
+            return
+        }
+        guard end > start else {
+            errorMessage = "Enter a duration greater than 0:00."
+            return
+        }
+        guard end <= Date.now.addingTimeInterval(1) else {
+            errorMessage = "Time entries cannot end in the future."
+            return
+        }
+        guard let mutationAccountID = account?.id else { return }
+        if source == "timer-composer" {
+            guard composerAccountID == mutationAccountID, composerMode != nil else {
+                errorMessage = "That timer form belongs to a previous Timen account."
+                return
+            }
+        }
+        guard validateDraftReferences(draft) else { return }
+        do {
+            let logged = try await gateway.logTime(start: start, end: end, draft: draft)
+            guard isMutationContextCurrent(mutationAccountID) else { return }
+            composerMode = nil
+            lastTimerDraft = draft
+            persistLastTimerDraft()
+            entries.removeAll { $0.id == logged.id || ($0.remoteID != nil && $0.remoteID == logged.remoteID) }
+            entries.append(logged)
+            if let remoteID = logged.remoteID { focus(on: remoteID) }
+            try? store.upsertEntries([logged])
+        } catch {
+            guard isMutationContextCurrent(mutationAccountID) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func quickToggleTimer(source: String = "status-bar") async {
         actionLogger.debug("quick-toggle source=\(source, privacy: .public) running=\(self.runningTimer != nil, privacy: .public)")
         guard authenticationState == .signedIn, connectivity.isOnline else {
@@ -437,9 +608,12 @@ final class AppModel {
         idleMonitor.stop()
         let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: true)
         do {
-            if let resumedEntryID,
-               let original = entries.first(where: { $0.remoteID == resumedEntryID })
-            {
+            if let resumedEntryID {
+                guard let original = resumedBaseEntry else {
+                    errorMessage = "The original Timen entry could not be loaded. Return to its week and try again."
+                    configureIdleMonitor()
+                    return
+                }
                 let addedDuration = max(0, desiredEnd.timeIntervalSince(timer.startedAt))
                 let updated = try await gateway.updateEntryDuration(
                     id: resumedEntryID,
@@ -524,6 +698,14 @@ final class AppModel {
         let draft = draft.enforcingBillable
         guard authenticationState == .signedIn, connectivity.isOnline else {
             errorMessage = "TimenBar must be online and connected to edit entries."
+            return
+        }
+        if let start, let end, end <= start {
+            errorMessage = "Enter a duration greater than 0:00."
+            return
+        }
+        if let end, end > Date.now.addingTimeInterval(1) {
+            errorMessage = "Time entries cannot end in the future."
             return
         }
         guard let mutationAccountID = account?.id else { return }
@@ -717,6 +899,81 @@ final class AppModel {
         authenticationState == .signedIn && account?.id == accountID
     }
 
+    private func presentComposer(_ mode: TimerComposerMode, for accountID: String) {
+        composerProjectRefreshTask?.cancel()
+        let sessionID = UUID()
+        composerAccountID = accountID
+        composerSessionID = sessionID
+        composerProjectRefreshMessage = nil
+        isRefreshingComposerProjects = false
+        composerMode = mode
+
+        guard authenticationState == .signedIn, connectivity.isOnline else { return }
+        let refreshID = beginProjectRefreshRequest()
+        isRefreshingComposerProjects = true
+        composerProjectRefreshTask = Task { @MainActor [weak self] in
+            await self?.refreshProjectsForComposer(
+                accountID: accountID,
+                sessionID: sessionID,
+                refreshID: refreshID
+            )
+        }
+    }
+
+    private func refreshProjectsForComposer(
+        accountID: String,
+        sessionID: UUID,
+        refreshID: UInt64
+    ) async {
+        defer {
+            if composerSessionID == sessionID { isRefreshingComposerProjects = false }
+        }
+        do {
+            let latestProjects = try await gateway.projects()
+            try Task.checkCancellation()
+            guard isCurrentComposer(accountID: accountID, sessionID: sessionID) else { return }
+            try installProjects(latestProjects, for: accountID, refreshID: refreshID)
+            guard isCurrentComposer(accountID: accountID, sessionID: sessionID) else { return }
+            composerProjectRefreshMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard isCurrentComposer(accountID: accountID, sessionID: sessionID) else { return }
+            actionLogger.error("composer project refresh failed: \(error.localizedDescription, privacy: .public)")
+            composerProjectRefreshMessage = "Couldn’t refresh projects. Showing saved projects."
+        }
+    }
+
+    private func isCurrentComposer(accountID: String, sessionID: UUID) -> Bool {
+        authenticationState == .signedIn &&
+            account?.id == accountID &&
+            composerAccountID == accountID &&
+            composerSessionID == sessionID &&
+            composerMode != nil
+    }
+
+    private func beginProjectRefreshRequest() -> UInt64 {
+        projectRefreshSequence &+= 1
+        return projectRefreshSequence
+    }
+
+    private func installProjects(
+        _ latestProjects: [TimenProject],
+        for accountID: String,
+        refreshID: UInt64
+    ) throws {
+        guard refreshID > publishedProjectRefreshSequence,
+              account?.id == accountID,
+              try store.cachedAccount()?.id == accountID
+        else { return }
+
+        try store.replaceProjects(latestProjects)
+        let refreshedFavorites = try store.reconcileFavorites(with: latestProjects)
+        publishedProjectRefreshSequence = refreshID
+        projects = latestProjects
+        favorites = refreshedFavorites
+    }
+
     private func validateDraftReferences(_ draft: TimerDraft) -> Bool {
         if let projectID = draft.projectID,
            !projects.contains(where: { $0.id == projectID })
@@ -817,6 +1074,12 @@ final class AppModel {
     }
 
     private func clearVisibleAccountState() {
+        projectRefreshSequence &+= 1
+        publishedProjectRefreshSequence = projectRefreshSequence
+        composerProjectRefreshTask?.cancel()
+        composerProjectRefreshTask = nil
+        isRefreshingComposerProjects = false
+        composerProjectRefreshMessage = nil
         account = nil
         projects = []
         tags = []

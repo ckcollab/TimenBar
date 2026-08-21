@@ -93,10 +93,74 @@ struct TimerDraft: Codable, Hashable, Sendable {
     }
 }
 
+enum TimerDurationInput {
+    static func parse(_ text: String) -> TimeInterval? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        guard components.count == 2,
+              !components[0].isEmpty,
+              !components[1].isEmpty,
+              components[0].allSatisfy(\.isNumber),
+              components[1].allSatisfy(\.isNumber),
+              let hours = Int(components[0]),
+              let minutes = Int(components[1]),
+              minutes < 60,
+              hours <= (Int.max - minutes * 60) / 3_600
+        else { return nil }
+
+        return TimeInterval(hours * 3_600 + minutes * 60)
+    }
+
+    static func format(_ duration: TimeInterval) -> String {
+        duration.timerText
+    }
+}
+
 enum TimerDateChange {
+    static func ending(
+        at referenceEnd: Date,
+        duration: TimeInterval,
+        on selectedDate: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date) {
+        var components = calendar.dateComponents([.year, .month, .day], from: selectedDate)
+        let time = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: referenceEnd)
+        components.hour = time.hour
+        components.minute = time.minute
+        components.second = time.second
+        components.nanosecond = time.nanosecond
+
+        let shiftedEnd = calendar.date(from: components) ?? referenceEnd
+        let duration = max(0, duration)
+        let preferredStart = shiftedEnd.addingTimeInterval(-duration)
+        let selectedDayStart = calendar.startOfDay(for: selectedDate)
+
+        // The composer's Date represents the entry's start date. If subtracting
+        // a long duration would move the start into the previous day, anchor the
+        // entry at midnight and let its end move forward instead.
+        guard preferredStart >= selectedDayStart else {
+            return (selectedDayStart, selectedDayStart.addingTimeInterval(duration))
+        }
+        return (preferredStart, shiftedEnd)
+    }
+
     static func shifting(
         start: Date,
         end: Date,
+        to selectedDate: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date) {
+        shifting(
+            start: start,
+            duration: max(0, end.timeIntervalSince(start)),
+            to: selectedDate,
+            calendar: calendar
+        )
+    }
+
+    static func shifting(
+        start: Date,
+        duration: TimeInterval,
         to selectedDate: Date,
         calendar: Calendar
     ) -> (start: Date, end: Date) {
@@ -107,8 +171,10 @@ enum TimerDateChange {
         components.second = time.second
         components.nanosecond = time.nanosecond
 
-        guard let shiftedStart = calendar.date(from: components) else { return (start, end) }
-        return (shiftedStart, shiftedStart.addingTimeInterval(end.timeIntervalSince(start)))
+        guard let shiftedStart = calendar.date(from: components) else {
+            return (start, start.addingTimeInterval(max(0, duration)))
+        }
+        return (shiftedStart, shiftedStart.addingTimeInterval(max(0, duration)))
     }
 }
 

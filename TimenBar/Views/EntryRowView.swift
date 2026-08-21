@@ -9,10 +9,7 @@ struct EntryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Capsule()
-                    .fill(TimenBarTheme.accent.opacity(0.65))
-                    .frame(width: 3, height: 42)
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.projectName ?? "Unassigned")
                         .font(.headline)
@@ -21,7 +18,7 @@ struct EntryRowView: View {
                         Text(entry.note)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if !entry.tags.isEmpty {
                         Text(entry.tags.map(\.name).joined(separator: " · "))

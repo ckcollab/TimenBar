@@ -4,6 +4,72 @@ import XCTest
 @testable import TimenBar
 
 final class CoreBehaviorTests: XCTestCase {
+    func testDurationInputParsesHoursAndMinutes() {
+        XCTAssertEqual(TimerDurationInput.parse("0:00"), 0)
+        XCTAssertEqual(TimerDurationInput.parse("1:30"), 5_400)
+        XCTAssertEqual(TimerDurationInput.parse(" 12:05 "), 43_500)
+        XCTAssertEqual(TimerDurationInput.parse("1:5"), 3_900)
+        XCTAssertNil(TimerDurationInput.parse("90"))
+        XCTAssertNil(TimerDurationInput.parse("1:60"))
+        XCTAssertNil(TimerDurationInput.parse("-1:30"))
+        XCTAssertNil(TimerDurationInput.parse("hours"))
+    }
+
+    func testManualEntryEndsAtCurrentClockTimeOnSelectedDate() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let currentTime = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 10, minute: 15
+        )))
+        let yesterday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 18, minute: 45
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: currentTime,
+            duration: 5_400,
+            on: yesterday,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        let endComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.end)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 20)
+        XCTAssertEqual(startComponents.hour, 8)
+        XCTAssertEqual(startComponents.minute, 45)
+        XCTAssertEqual(endComponents.year, 2026)
+        XCTAssertEqual(endComponents.month, 8)
+        XCTAssertEqual(endComponents.day, 20)
+        XCTAssertEqual(endComponents.hour, 10)
+        XCTAssertEqual(endComponents.minute, 15)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 5_400, accuracy: 0.001)
+    }
+
+    func testManualEntryKeepsSelectedStartDateWhenDurationCrossesMidnight() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let currentTime = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 1
+        )))
+        let selectedDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: currentTime,
+            duration: 7_200,
+            on: selectedDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(calendar.isDate(interval.start, inSameDayAs: selectedDate))
+        XCTAssertEqual(calendar.component(.hour, from: interval.start), 0)
+        XCTAssertEqual(calendar.component(.hour, from: interval.end), 2)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 7_200, accuracy: 0.001)
+    }
+
     func testTimerDraftsEnforceBillableMutations() {
         XCTAssertTrue(TimerDraft.empty.billable)
 
@@ -40,6 +106,30 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertEqual(components.hour, 9)
         XCTAssertEqual(components.minute, 30)
         XCTAssertEqual(shifted.end.timeIntervalSince(shifted.start), 5_400, accuracy: 0.001)
+    }
+
+    func testChangingEntryDateAppliesEditedDurationFromOriginalStartTime() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let originalStart = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 14, hour: 9, minute: 30
+        )))
+        let selectedDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20
+        )))
+
+        let shifted = TimerDateChange.shifting(
+            start: originalStart,
+            duration: 7_200,
+            to: selectedDate,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: shifted.start)
+        XCTAssertEqual(startComponents.day, 20)
+        XCTAssertEqual(startComponents.hour, 9)
+        XCTAssertEqual(startComponents.minute, 30)
+        XCTAssertEqual(shifted.end.timeIntervalSince(shifted.start), 7_200, accuracy: 0.001)
     }
 
     func testPKCEChallengeUsesRFC7636Base64URL() {
@@ -136,6 +226,163 @@ final class CoreBehaviorTests: XCTestCase {
 
 @MainActor
 final class AppModelAccountIsolationTests: XCTestCase {
+    func testOpeningComposerRefreshesProjectsAndPersistsLatestCatalog() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let original = TimenProject(id: "original", name: "Original", clientName: "Client")
+        let added = TimenProject(id: "added", name: "New Assignment", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [original],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        let initialProjectRequests = await gateway.projectRequestCount()
+        XCTAssertEqual(initialProjectRequests, 1)
+        await gateway.setProjects([original, added])
+
+        model.presentNewTimer()
+        XCTAssertTrue(model.isRefreshingComposerProjects)
+        await waitForComposerProjectRefresh(model)
+
+        let refreshedProjectRequests = await gateway.projectRequestCount()
+        XCTAssertEqual(refreshedProjectRequests, 2)
+        XCTAssertEqual(Set(model.projects.map(\.id)), Set([original.id, added.id]))
+        XCTAssertNil(model.composerProjectRefreshMessage)
+        let cachedProjects = try OfflineStore(container: container).projects()
+        XCTAssertEqual(Set(cachedProjects.map(\.id)), Set([original.id, added.id]))
+    }
+
+    func testComposerProjectRefreshFailureKeepsSavedCatalog() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let original = TimenProject(id: "original", name: "Original", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [original],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await gateway.setProjectsUnavailable(true)
+
+        model.presentNewTimer()
+        await waitForComposerProjectRefresh(model)
+
+        XCTAssertEqual(model.projects, [original])
+        XCTAssertEqual(try OfflineStore(container: container).projects(), [original])
+        XCTAssertEqual(model.composerProjectRefreshMessage, "Couldn’t refresh projects. Showing saved projects.")
+    }
+
+    func testManualTimeUsesCompletedLogMutationAndRejectsFutureEnd() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentNewTimer()
+        let end = Date.now.addingTimeInterval(-60)
+        let start = end.addingTimeInterval(-3_600)
+        let draft = TimerDraft(projectID: project.id, tagIDs: [], note: "Yesterday", billable: false)
+
+        await model.logTime(start: start, end: end, draft: draft, source: "timer-composer")
+
+        let lastLogTimeCall = await gateway.lastLogTimeCall()
+        let logged = try XCTUnwrap(lastLogTimeCall)
+        XCTAssertEqual(logged.start, start)
+        XCTAssertEqual(logged.end, end)
+        XCTAssertEqual(logged.draft, draft.enforcingBillable)
+        XCTAssertEqual(model.entries.count, 1)
+        XCTAssertEqual(model.entries.first?.duration, 3_600)
+        XCTAssertNil(model.composerMode)
+
+        model.presentNewTimer()
+        let futureEnd = Date.now.addingTimeInterval(3_600)
+        await model.logTime(
+            start: futureEnd.addingTimeInterval(-600),
+            end: futureEnd,
+            draft: draft,
+            source: "timer-composer"
+        )
+
+        let logTimeCallCount = await gateway.logTimeCallCount()
+        XCTAssertEqual(logTimeCallCount, 1)
+        XCTAssertNotNil(model.composerMode)
+        XCTAssertEqual(model.errorMessage, "Time entries cannot end in the future.")
+
+        let savedEntry = try XCTUnwrap(model.entries.first)
+        model.presentEdit(savedEntry)
+        await model.updateEntry(
+            savedEntry,
+            draft: draft,
+            start: Date.now,
+            end: Date.now.addingTimeInterval(3_600)
+        )
+        XCTAssertNotNil(model.composerMode)
+        XCTAssertEqual(model.errorMessage, "Time entries cannot end in the future.")
+    }
+
+    func testContinuedEntryKeepsItsBaseDurationOutsideTheVisibleWeek() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-7_200)
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(3_600),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Continued work", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        let continuationStart = try XCTUnwrap(model.runningTimer?.startedAt)
+        let continuationEnd = continuationStart.addingTimeInterval(600)
+
+        // Navigating to another week replaces the visible entries array. The
+        // persisted focused-entry snapshot must still supply the continuation base.
+        model.entries = []
+        model.now = continuationEnd
+        XCTAssertEqual(model.runningDisplayDuration, 4_200, accuracy: 0.01)
+
+        await model.stopTimer(at: continuationEnd)
+
+        let recordedDuration = await gateway.lastDurationUpdate()
+        let requestedDuration = try XCTUnwrap(recordedDuration)
+        XCTAssertEqual(requestedDuration, 4_200, accuracy: 0.01)
+        XCTAssertNil(model.runningTimer)
+        XCTAssertFalse(model.isContinuingEntry)
+        let savedEntry = try XCTUnwrap(model.entries.first)
+        XCTAssertEqual(savedEntry.duration, 4_200, accuracy: 0.01)
+    }
+
     func testSuccessfulAccountChangePublishesOnlyNewAccountState() async throws {
         let container = try makeContainer()
         let accountA = account(id: "account-a")
@@ -236,7 +483,7 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertNil(model.quickStartEntry)
         XCTAssertNil(model.lastTimerDraft)
         XCTAssertNil(defaults.string(forKey: "accountScopedStateAccountID"))
-        XCTAssertEqual(try store.cachedAccount(), accountB)
+        XCTAssertNil(try store.cachedAccount())
         XCTAssertTrue(try store.projects().isEmpty)
         XCTAssertTrue(try store.tags().isEmpty)
         XCTAssertTrue(try store.entries(from: .distantPast, to: .distantFuture).isEmpty)
@@ -284,6 +531,145 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertTrue(try store.favorites().isEmpty)
     }
 
+    func testRetrySignInCancelsThePendingAttemptAndKeepsTheReplacementState() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: [],
+            firstAuthenticationWaitsForCancellation: true
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        let originalAttempt = Task { await model.signIn() }
+        await waitForAuthenticationRequests(1, gateway: gateway)
+        XCTAssertEqual(model.authenticationState, .signingIn)
+
+        let replacementAttempt = Task { await model.retrySignIn() }
+        await waitForAuthenticationRequests(2, gateway: gateway)
+        await waitForAuthenticationState(.signedIn, model: model)
+        await replacementAttempt.value
+        await originalAttempt.value
+
+        let authenticationRequests = await gateway.authenticationRequestCount()
+        let maximumConcurrentAuthenticationRequests = await gateway.maximumConcurrentAuthenticationRequestCount()
+        XCTAssertEqual(authenticationRequests, 2)
+        XCTAssertEqual(maximumConcurrentAuthenticationRequests, 1)
+        XCTAssertEqual(model.authenticationState, .signedIn)
+        XCTAssertEqual(model.account, activeAccount)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testCancelSignInReturnsToSignedOutWithoutShowingAnError() async throws {
+        let container = try makeContainer()
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [],
+            tags: [],
+            entries: [],
+            firstAuthenticationWaitsForCancellation: true
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        let attempt = Task { await model.signIn() }
+        await waitForAuthenticationRequests(1, gateway: gateway)
+        await model.cancelSignIn()
+        await attempt.value
+
+        XCTAssertEqual(model.authenticationState, .signedOut)
+        XCTAssertNil(model.errorMessage)
+        let authenticationRequests = await gateway.authenticationRequestCount()
+        XCTAssertEqual(authenticationRequests, 1)
+    }
+
+    func testCancelAfterAuthenticationRemovesCredentialsCreatedByThatAttempt() async throws {
+        let container = try makeContainer()
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [],
+            tags: [],
+            entries: [],
+            accountRequestWaitsForCancellation: true
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        let attempt = Task { await model.signIn() }
+        await waitForAccountRequests(1, gateway: gateway)
+        let credentialsBeforeCancellation = await gateway.hasStoredCredentials()
+        XCTAssertTrue(credentialsBeforeCancellation)
+
+        await model.cancelSignIn()
+        await attempt.value
+
+        let hasStoredCredentials = await gateway.hasStoredCredentials()
+        let signOutRequests = await gateway.signOutRequestCount()
+        XCTAssertFalse(hasStoredCredentials)
+        XCTAssertEqual(signOutRequests, 1)
+        XCTAssertEqual(model.authenticationState, .signedOut)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testFailedRetryDoesNotLeaveCredentialsFromEitherAttempt() async throws {
+        let container = try makeContainer()
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [],
+            tags: [],
+            entries: [],
+            failProjects: true,
+            accountRequestWaitsForCancellation: true
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        let originalAttempt = Task { await model.signIn() }
+        await waitForAccountRequests(1, gateway: gateway)
+        let replacementAttempt = Task { await model.retrySignIn() }
+        await replacementAttempt.value
+        await originalAttempt.value
+
+        let hasStoredCredentials = await gateway.hasStoredCredentials()
+        let signOutRequests = await gateway.signOutRequestCount()
+        let authenticationEvents = await gateway.authenticationEventsSnapshot()
+        XCTAssertFalse(hasStoredCredentials)
+        XCTAssertEqual(signOutRequests, 2)
+        XCTAssertEqual(authenticationEvents, ["authenticate-1", "signOut", "authenticate-2", "signOut"])
+        XCTAssertEqual(model.authenticationState, .signedOut)
+        XCTAssertEqual(model.errorMessage, AccountLifecycleGatewayError.projectsUnavailable.localizedDescription)
+    }
+
+    func testSignOutWaitsForPendingAuthenticationToFinish() async throws {
+        let container = try makeContainer()
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [],
+            tags: [],
+            entries: [],
+            firstAuthenticationWaitsForCancellation: true
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        let attempt = Task { await model.signIn() }
+        await waitForAuthenticationRequests(1, gateway: gateway)
+        await model.signOut()
+        await attempt.value
+
+        let signOutOverlappedAuthentication = await gateway.didSignOutWhileAuthenticating()
+        XCTAssertFalse(signOutOverlappedAuthentication)
+        XCTAssertEqual(model.authenticationState, .signedOut)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: Schema(PersistenceSchema.models), configurations: [configuration])
@@ -309,6 +695,47 @@ final class AppModelAccountIsolationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: name)!
         defaults.set(name, forKey: "testSuiteName")
         return defaults
+    }
+
+    private func waitForComposerProjectRefresh(_ model: AppModel) async {
+        for _ in 0 ..< 1_000 {
+            if !model.isRefreshingComposerProjects { return }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for the composer project refresh")
+    }
+
+    private func waitForAuthenticationRequests(
+        _ expectedCount: Int,
+        gateway: AccountLifecycleGateway
+    ) async {
+        for _ in 0 ..< 1_000 {
+            if await gateway.authenticationRequestCount() >= expectedCount { return }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for authentication attempt \(expectedCount)")
+    }
+
+    private func waitForAuthenticationState(
+        _ expectedState: AuthenticationState,
+        model: AppModel
+    ) async {
+        for _ in 0 ..< 1_000 {
+            if model.authenticationState == expectedState { return }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for authentication state \(expectedState)")
+    }
+
+    private func waitForAccountRequests(
+        _ expectedCount: Int,
+        gateway: AccountLifecycleGateway
+    ) async {
+        for _ in 0 ..< 1_000 {
+            if await gateway.accountRequestCount() >= expectedCount { return }
+            await Task.yield()
+        }
+        XCTFail("Timed out waiting for account request \(expectedCount)")
     }
 
     private func defaultsSuiteName(_ defaults: UserDefaults) -> String {
@@ -356,36 +783,97 @@ private enum AccountLifecycleGatewayError: Error {
     case unsupportedMutation
 }
 
+private struct LogTimeCall: Sendable {
+    var start: Date
+    var end: Date
+    var draft: TimerDraft
+}
+
 private actor AccountLifecycleGateway: TimenGateway {
     private let currentAccount: TimenAccount
-    private let projectValues: [TimenProject]
+    private var projectValues: [TimenProject]
     private let tagValues: [TimenTag]
     private let entryValues: [TimeEntry]
-    private let failProjects: Bool
+    private var failProjects: Bool
+    private var projectRequests = 0
     private var startCalls = 0
+    private var logTimeCalls: [LogTimeCall] = []
+    private var durationUpdates: [TimeInterval] = []
+    private let firstAuthenticationWaitsForCancellation: Bool
+    private var authenticationRequests = 0
+    private var activeAuthenticationRequests = 0
+    private var maximumConcurrentAuthenticationRequests = 0
+    private var signOutOverlappedAuthentication = false
+    private let accountRequestWaitsForCancellation: Bool
+    private var accountRequests = 0
+    private var signOutRequests = 0
+    private var credentialsStored = false
+    private var authenticationEvents: [String] = []
 
     init(
         account: TimenAccount,
         projects: [TimenProject],
         tags: [TimenTag],
         entries: [TimeEntry],
-        failProjects: Bool = false
+        failProjects: Bool = false,
+        firstAuthenticationWaitsForCancellation: Bool = false,
+        accountRequestWaitsForCancellation: Bool = false
     ) {
         currentAccount = account
         projectValues = projects
         tagValues = tags
         entryValues = entries
         self.failProjects = failProjects
+        self.firstAuthenticationWaitsForCancellation = firstAuthenticationWaitsForCancellation
+        self.accountRequestWaitsForCancellation = accountRequestWaitsForCancellation
     }
 
     func startTimerCallCount() -> Int { startCalls }
+    func logTimeCallCount() -> Int { logTimeCalls.count }
+    func lastLogTimeCall() -> LogTimeCall? { logTimeCalls.last }
+    func lastDurationUpdate() -> TimeInterval? { durationUpdates.last }
+    func projectRequestCount() -> Int { projectRequests }
+    func authenticationRequestCount() -> Int { authenticationRequests }
+    func maximumConcurrentAuthenticationRequestCount() -> Int { maximumConcurrentAuthenticationRequests }
+    func didSignOutWhileAuthenticating() -> Bool { signOutOverlappedAuthentication }
+    func accountRequestCount() -> Int { accountRequests }
+    func signOutRequestCount() -> Int { signOutRequests }
+    func hasStoredCredentials() -> Bool { credentialsStored }
+    func authenticationEventsSnapshot() -> [String] { authenticationEvents }
+    func setProjects(_ projects: [TimenProject]) { projectValues = projects }
+    func setProjectsUnavailable(_ unavailable: Bool) { failProjects = unavailable }
     func isAuthenticated() async -> Bool { true }
-    func authenticate() async throws {}
-    func signOut() async throws {}
+    func authenticate() async throws {
+        authenticationRequests += 1
+        authenticationEvents.append("authenticate-\(authenticationRequests)")
+        activeAuthenticationRequests += 1
+        maximumConcurrentAuthenticationRequests = max(
+            maximumConcurrentAuthenticationRequests,
+            activeAuthenticationRequests
+        )
+        defer { activeAuthenticationRequests -= 1 }
+        if firstAuthenticationWaitsForCancellation, authenticationRequests == 1 {
+            try await Task.sleep(for: .seconds(60))
+        }
+        credentialsStored = true
+    }
+    func signOut() async throws {
+        signOutRequests += 1
+        authenticationEvents.append("signOut")
+        signOutOverlappedAuthentication = activeAuthenticationRequests > 0
+        credentialsStored = false
+    }
     func validateCapabilities() async throws {}
-    func account() async throws -> TimenAccount { currentAccount }
+    func account() async throws -> TimenAccount {
+        accountRequests += 1
+        if accountRequestWaitsForCancellation, accountRequests == 1 {
+            try await Task.sleep(for: .seconds(60))
+        }
+        return currentAccount
+    }
     func runningTimer() async throws -> RunningTimer? { nil }
     func projects() async throws -> [TimenProject] {
+        projectRequests += 1
         if failProjects { throw AccountLifecycleGatewayError.projectsUnavailable }
         return projectValues
     }
@@ -400,8 +888,22 @@ private actor AccountLifecycleGateway: TimenGateway {
         )
     }
     func stopTimer() async throws -> TimeEntry { throw AccountLifecycleGatewayError.unsupportedMutation }
-    func logTime(start _: Date, end _: Date, draft _: TimerDraft) async throws -> TimeEntry {
-        throw AccountLifecycleGatewayError.unsupportedMutation
+    func logTime(start: Date, end: Date, draft: TimerDraft) async throws -> TimeEntry {
+        logTimeCalls.append(LogTimeCall(start: start, end: end, draft: draft))
+        let project = projectValues.first { $0.id == draft.projectID }
+        return TimeEntry(
+            id: "logged-\(logTimeCalls.count)",
+            remoteID: "logged-\(logTimeCalls.count)",
+            start: start,
+            end: end,
+            projectID: project?.id,
+            projectName: project?.name,
+            clientName: project?.clientName,
+            note: draft.note,
+            tags: tagValues.filter { draft.tagIDs.contains($0.id) },
+            billable: draft.billable,
+            syncState: .synced
+        )
     }
     func updateEntry(
         id _: String,
@@ -411,8 +913,20 @@ private actor AccountLifecycleGateway: TimenGateway {
     ) async throws -> TimeEntry {
         throw AccountLifecycleGatewayError.unsupportedMutation
     }
-    func updateEntryDuration(id _: String, draft _: TimerDraft, duration _: TimeInterval) async throws -> TimeEntry {
-        throw AccountLifecycleGatewayError.unsupportedMutation
+    func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry {
+        guard var entry = entryValues.first(where: { $0.remoteID == id }) else {
+            throw AccountLifecycleGatewayError.unsupportedMutation
+        }
+        durationUpdates.append(duration)
+        let project = projectValues.first { $0.id == draft.projectID }
+        entry.end = entry.start.addingTimeInterval(duration)
+        entry.projectID = project?.id
+        entry.projectName = project?.name
+        entry.clientName = project?.clientName
+        entry.note = draft.note
+        entry.tags = tagValues.filter { draft.tagIDs.contains($0.id) }
+        entry.billable = draft.billable
+        return entry
     }
     func deleteEntry(id _: String) async throws { throw AccountLifecycleGatewayError.unsupportedMutation }
 }

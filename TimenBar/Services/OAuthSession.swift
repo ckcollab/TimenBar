@@ -70,6 +70,180 @@ enum OAuthSecurity {
     }
 }
 
+enum OAuthCallbackPage {
+    static let successHTML = """
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta name="color-scheme" content="light dark">
+      <title>TimenBar authorization received</title>
+      <style>
+        :root {
+          color-scheme: light dark;
+          --canvas: #f5f5f7;
+          --card: rgba(255, 255, 255, .88);
+          --text: #19191d;
+          --secondary: #65656d;
+          --border: rgba(25, 25, 29, .10);
+          --rule: rgba(25, 25, 29, .09);
+          --pill: rgba(228, 62, 85, .10);
+          --pill-text: #b92c42;
+          --shadow: 0 24px 70px rgba(69, 31, 39, .16);
+        }
+
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --canvas: #16161a;
+            --card: rgba(35, 35, 40, .92);
+            --text: #fafafd;
+            --secondary: #aaaab2;
+            --border: rgba(255, 255, 255, .10);
+            --rule: rgba(255, 255, 255, .08);
+            --pill: rgba(239, 82, 96, .14);
+            --pill-text: #ff8993;
+            --shadow: 0 28px 80px rgba(0, 0, 0, .40);
+          }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+          min-height: 100vh;
+          margin: 0;
+          display: grid;
+          place-items: center;
+          padding: 32px;
+          background:
+            radial-gradient(circle at 50% -12%, rgba(255, 139, 61, .22), transparent 42%),
+            radial-gradient(circle at 100% 100%, rgba(228, 62, 85, .10), transparent 38%),
+            var(--canvas);
+          color: var(--text);
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        main {
+          width: min(100%, 448px);
+          padding: 44px 42px 38px;
+          text-align: center;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 28px;
+          box-shadow: var(--shadow);
+          backdrop-filter: blur(22px);
+          -webkit-backdrop-filter: blur(22px);
+        }
+
+        .logo {
+          display: block;
+          width: 92px;
+          height: 92px;
+          margin: 0 auto 24px;
+          filter: drop-shadow(0 12px 22px rgba(116, 34, 57, .22));
+        }
+
+        .status {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 7px 11px;
+          color: var(--pill-text);
+          background: var(--pill);
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 650;
+          letter-spacing: .01em;
+        }
+
+        .check {
+          display: grid;
+          width: 17px;
+          height: 17px;
+          place-items: center;
+          border: 1.5px solid currentColor;
+          border-radius: 50%;
+          font-size: 11px;
+          line-height: 1;
+        }
+
+        h1 {
+          margin: 17px 0 10px;
+          font-size: clamp(28px, 7vw, 33px);
+          font-weight: 700;
+          letter-spacing: -.035em;
+          line-height: 1.12;
+        }
+
+        p {
+          max-width: 34ch;
+          margin: 0 auto;
+          color: var(--secondary);
+          font-size: 16px;
+          line-height: 1.55;
+        }
+
+        .hint {
+          margin-top: 26px;
+          padding-top: 22px;
+          border-top: 1px solid var(--rule);
+          font-size: 14px;
+        }
+
+        @media (max-width: 520px) {
+          body { padding: 18px; }
+          main { padding: 36px 24px 30px; border-radius: 23px; }
+          .logo { width: 82px; height: 82px; }
+        }
+      </style>
+    </head>
+    <body>
+      <main aria-labelledby="title">
+        <svg class="logo" aria-hidden="true" focusable="false" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="logo-gradient" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#FF8B3D"/>
+              <stop offset="1" stop-color="#E43E55"/>
+            </linearGradient>
+            <filter id="logo-shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#742239" flood-opacity=".32"/>
+            </filter>
+          </defs>
+          <rect x="48" y="48" width="928" height="928" rx="224" fill="url(#logo-gradient)"/>
+          <circle cx="512" cy="512" r="298" fill="#FFF" fill-opacity=".14"/>
+          <path d="M363 292h298M363 732h298" fill="none" stroke="#FFF" stroke-width="58" stroke-linecap="round"/>
+          <path d="M398 323c0 105 46 137 114 189-68 52-114 84-114 189h228c0-105-46-137-114-189 68-52 114-84 114-189H398Z" fill="#FFF" filter="url(#logo-shadow)"/>
+          <path d="M454 374h116c-8 44-28 65-58 90-30-25-50-46-58-90Zm58 184c33 26 56 51 62 91H450c6-40 29-65 62-91Z" fill="#EF5260"/>
+        </svg>
+        <div class="status"><span class="check" aria-hidden="true">✓</span>Secure sign-in</div>
+        <h1 id="title">Authorization received</h1>
+        <p>Return to TimenBar to finish connecting to Timen.</p>
+        <p class="hint">You can safely close this tab.</p>
+      </main>
+    </body>
+    </html>
+    """
+
+    static func successResponse() -> Data {
+        let contentLength = successHTML.utf8.count
+        let headers = [
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/html; charset=utf-8",
+            "Content-Length: \(contentLength)",
+            "Cache-Control: no-store",
+            "Pragma: no-cache",
+            "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "X-Content-Type-Options: nosniff",
+            "Referrer-Policy: no-referrer",
+            "X-Frame-Options: DENY",
+            "Cross-Origin-Resource-Policy: same-origin",
+            "Connection: close",
+        ].joined(separator: "\r\n")
+        return Data((headers + "\r\n\r\n" + successHTML).utf8)
+    }
+}
+
 private struct ProtectedResourceMetadata: Decodable {
     var resource: URL
     var authorizationServers: [URL]
@@ -133,6 +307,10 @@ actor OAuthSession {
     private let callbackTimeout: Duration
     private let tokenAccount = "tokens"
     private let registrationAccount = "registration"
+    private var cachedTokens: OAuthTokenSet?
+    private var didLoadTokens = false
+    private var cachedRegistration: OAuthClientRegistration?
+    private var didLoadRegistration = false
 
     init(
         session: URLSession = .shared,
@@ -151,7 +329,7 @@ actor OAuthSession {
     }
 
     func isAuthenticated() async -> Bool {
-        (try? await keychain.load(OAuthTokenSet.self, account: tokenAccount)) != nil
+        (try? await storedTokens()) != nil
     }
 
     func authenticate() async throws {
@@ -165,10 +343,7 @@ actor OAuthSession {
             throw TimenBarError.oauth("Timen does not advertise the required PKCE S256 method.")
         }
 
-        let hadSavedRegistration = try await keychain.load(
-            OAuthClientRegistration.self,
-            account: registrationAccount
-        ) != nil
+        let hadSavedRegistration = try await storedRegistration() != nil
 
         do {
             try await authenticate(
@@ -177,7 +352,7 @@ actor OAuthSession {
                 forceNewRegistration: false
             )
         } catch let error as OAuthProtocolError where hadSavedRegistration && error.invalidatesClientRegistration {
-            try await keychain.delete(account: registrationAccount)
+            try await deleteRegistration()
             try await authenticate(
                 resource: resource,
                 metadata: metadata,
@@ -231,37 +406,44 @@ actor OAuthSession {
             tokenEndpoint: metadata.tokenEndpoint,
             resource: resource.resource
         )
-        try await keychain.save(tokens, account: tokenAccount)
+        try Task.checkCancellation()
+        try await saveTokens(tokens)
     }
 
     func accessToken() async throws -> String {
-        guard var tokens = try await keychain.load(OAuthTokenSet.self, account: tokenAccount) else {
+        guard var tokens = try await storedTokens() else {
             throw TimenBarError.notAuthenticated
         }
         if tokens.needsRefresh {
             tokens = try await refresh(tokens)
-            try await keychain.save(tokens, account: tokenAccount)
+            try await saveTokens(tokens)
         }
         return tokens.accessToken
     }
 
     func signOut() async throws {
-        if let tokens = try await keychain.load(OAuthTokenSet.self, account: tokenAccount),
-           let metadata = try? await authorizationMetadata()
-        {
-            if let endpoint = metadata.revocationEndpoint,
-               let registration = try? await keychain.load(OAuthClientRegistration.self, account: registrationAccount)
-            {
-                for token in [tokens.accessToken, tokens.refreshToken].compactMap({ $0 }) {
-                    var request = URLRequest(url: endpoint)
-                    request.httpMethod = "POST"
-                    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                    request.httpBody = Self.formData(["token": token, "client_id": registration.clientID])
-                    _ = try? await session.data(for: request)
-                }
-            }
+        let tokens = try await storedTokens()
+        try await deleteTokens()
+
+        guard let tokens else { return }
+        Task { [weak self] in
+            await self?.revoke(tokens)
         }
-        try await keychain.delete(account: tokenAccount)
+    }
+
+    private func revoke(_ tokens: OAuthTokenSet) async {
+        guard let metadata = try? await authorizationMetadata(),
+              let endpoint = metadata.revocationEndpoint,
+              let registration = try? await storedRegistration()
+        else { return }
+
+        for token in [tokens.accessToken, tokens.refreshToken].compactMap({ $0 }) {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Self.formData(["token": token, "client_id": registration.clientID])
+            _ = try? await session.data(for: request)
+        }
     }
 
     private func authorizationMetadata() async throws -> AuthorizationServerMetadata {
@@ -276,10 +458,10 @@ actor OAuthSession {
         forceNew: Bool = false
     ) async throws -> OAuthClientRegistration {
         if !forceNew,
-           let saved = try await keychain.load(OAuthClientRegistration.self, account: registrationAccount)
+           let saved = try await storedRegistration()
         {
             let registration = OAuthClientRegistration(clientID: saved.clientID, redirectURI: redirectURI)
-            try await keychain.save(registration, account: registrationAccount)
+            try await saveRegistration(registration)
             return registration
         }
 
@@ -298,7 +480,7 @@ actor OAuthSession {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let response: RegistrationResponse = try await send(request)
         let registration = OAuthClientRegistration(clientID: response.clientID, redirectURI: redirectURI)
-        try await keychain.save(registration, account: registrationAccount)
+        try await saveRegistration(registration)
         return registration
     }
 
@@ -325,7 +507,7 @@ actor OAuthSession {
 
     private func refresh(_ current: OAuthTokenSet) async throws -> OAuthTokenSet {
         guard let refreshToken = current.refreshToken,
-              let registration = try await keychain.load(OAuthClientRegistration.self, account: registrationAccount)
+              let registration = try await storedRegistration()
         else { throw TimenBarError.notAuthenticated }
         let resource = try await fetch(ProtectedResourceMetadata.self, from: Self.resourceMetadataURL)
         let metadata = try await authorizationMetadata()
@@ -341,6 +523,49 @@ actor OAuthSession {
         var refreshed = try await tokenSet(from: request)
         if refreshed.refreshToken == nil { refreshed.refreshToken = current.refreshToken }
         return refreshed
+    }
+
+    private func storedTokens() async throws -> OAuthTokenSet? {
+        if didLoadTokens { return cachedTokens }
+        let tokens = try await keychain.load(OAuthTokenSet.self, account: tokenAccount)
+        cachedTokens = tokens
+        didLoadTokens = true
+        return tokens
+    }
+
+    private func saveTokens(_ tokens: OAuthTokenSet) async throws {
+        try await keychain.save(tokens, account: tokenAccount)
+        cachedTokens = tokens
+        didLoadTokens = true
+    }
+
+    private func deleteTokens() async throws {
+        cachedTokens = nil
+        didLoadTokens = true
+        try await keychain.delete(account: tokenAccount)
+    }
+
+    private func storedRegistration() async throws -> OAuthClientRegistration? {
+        if didLoadRegistration { return cachedRegistration }
+        let registration = try await keychain.load(
+            OAuthClientRegistration.self,
+            account: registrationAccount
+        )
+        cachedRegistration = registration
+        didLoadRegistration = true
+        return registration
+    }
+
+    private func saveRegistration(_ registration: OAuthClientRegistration) async throws {
+        try await keychain.save(registration, account: registrationAccount)
+        cachedRegistration = registration
+        didLoadRegistration = true
+    }
+
+    private func deleteRegistration() async throws {
+        cachedRegistration = nil
+        didLoadRegistration = true
+        try await keychain.delete(account: registrationAccount)
     }
 
     private func tokenSet(from request: URLRequest) async throws -> OAuthTokenSet {
@@ -531,13 +756,10 @@ final class LoopbackCallbackServer: OAuthCallbackServing, @unchecked Sendable {
                 return
             }
 
-            let html = """
-            <!doctype html><meta charset="utf-8"><title>TimenBar connected</title>
-            <body style="font-family:-apple-system;padding:3rem"><h1>Connected to TimenBar</h1>
-            <p>You can close this window and return to TimenBar.</p></body>
-            """
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
-            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+            connection.send(
+                content: OAuthCallbackPage.successResponse(),
+                completion: .contentProcessed { _ in connection.cancel() }
+            )
 
             self.finishCallback(.success(url))
         }

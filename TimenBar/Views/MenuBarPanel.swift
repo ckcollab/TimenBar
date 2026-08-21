@@ -172,23 +172,53 @@ private struct SignedOutView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 310)
             }
-            Button {
-                Task { await appModel.signIn() }
-            } label: {
-                if appModel.authenticationState == .signingIn {
-                    ProgressView().controlSize(.small).frame(width: 130)
-                } else {
+            if appModel.authenticationState == .signingIn {
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Waiting for Timen in your browser…")
+                            .font(.callout.weight(.medium))
+                    }
+
+                    HStack(spacing: 10) {
+                        Button("Try Again") {
+                            Task { await appModel.retrySignIn() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(TimenBarTheme.accent)
+                        .disabled(appModel.isAuthenticationTransitioning)
+                        .help("Cancel this attempt and open a new Timen sign-in page")
+
+                        Button("Cancel") {
+                            Task { await appModel.cancelSignIn() }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(appModel.isAuthenticationTransitioning)
+                    }
+
+                    Text("Try Again cancels this attempt and opens a fresh page in your default browser.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                }
+            } else {
+                Button {
+                    Task { await appModel.signIn() }
+                } label: {
                     Text("Connect Timen").frame(width: 130)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(TimenBarTheme.accent)
+                .disabled(appModel.isAuthenticationTransitioning)
+
+                Text("Your browser handles email, password, or Google sign-in. TimenBar never sees your password.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(TimenBarTheme.accent)
-            .disabled(appModel.authenticationState == .signingIn)
-            Text("Your browser handles email, password, or Google sign-in. TimenBar never sees your password.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

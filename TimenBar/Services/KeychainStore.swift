@@ -2,11 +2,27 @@ import Foundation
 import Security
 
 actor KeychainStore {
-    static let shared = KeychainStore()
+    static let legacyService = "app.timenbar.TimenBar.oauth"
+    // Start clean instead of touching legacy items whose ACL might belong to
+    // an Apple Development build. Reading those items is what causes macOS to
+    // ask for Keychain permission before the app can offer sign-in again.
+    static let productionService = "\(legacyService).v2"
+    // The macOS file-based Keychain binds an item to the creator's signing
+    // requirement. Apple Development and Developer ID are intentionally
+    // different requirements, so they must not contend for the same items.
+    static let developmentService = "\(productionService).development"
+
+    #if DEBUG
+    static let defaultService = developmentService
+    #else
+    static let defaultService = productionService
+    #endif
+
+    static let shared = KeychainStore(service: defaultService)
 
     private let service: String
 
-    init(service: String = "app.timenbar.TimenBar.oauth") {
+    init(service: String = defaultService) {
         self.service = service
     }
 

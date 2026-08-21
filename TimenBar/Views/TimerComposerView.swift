@@ -7,19 +7,24 @@ struct TimerComposerView: View {
     let mode: TimerComposerMode
     @State private var draft: TimerDraft
     @State private var start: Date
-    @State private var end: Date
     @State private var entryDate: Date
+    @State private var durationText: String
+    @State private var durationWasEdited = false
     @State private var isProjectPopoverPresented = false
     @State private var isTagPopoverPresented = false
+    @State private var isDatePickerPresented = false
+    private let originalDuration: TimeInterval
 
     init(mode: TimerComposerMode) {
         self.mode = mode
+        let now = Date.now
         switch mode {
         case let .new(draft):
             _draft = State(initialValue: draft.enforcingBillable)
-            _start = State(initialValue: .now)
-            _end = State(initialValue: .now)
-            _entryDate = State(initialValue: .now)
+            _start = State(initialValue: now)
+            _entryDate = State(initialValue: now)
+            _durationText = State(initialValue: TimerDurationInput.format(0))
+            originalDuration = 0
         case let .running(timer):
             _draft = State(initialValue: TimerDraft(
                 projectID: timer.projectID,
@@ -28,13 +33,15 @@ struct TimerComposerView: View {
                 billable: true
             ))
             _start = State(initialValue: timer.startedAt)
-            _end = State(initialValue: .now)
             _entryDate = State(initialValue: timer.startedAt)
+            _durationText = State(initialValue: TimerDurationInput.format(max(0, now.timeIntervalSince(timer.startedAt))))
+            originalDuration = max(0, now.timeIntervalSince(timer.startedAt))
         case let .restart(_, draft):
             _draft = State(initialValue: draft.enforcingBillable)
-            _start = State(initialValue: .now)
-            _end = State(initialValue: .now)
-            _entryDate = State(initialValue: .now)
+            _start = State(initialValue: now)
+            _entryDate = State(initialValue: now)
+            _durationText = State(initialValue: TimerDurationInput.format(0))
+            originalDuration = 0
         case let .edit(entry):
             _draft = State(initialValue: TimerDraft(
                 projectID: entry.projectID,
@@ -43,8 +50,9 @@ struct TimerComposerView: View {
                 billable: true
             ))
             _start = State(initialValue: entry.start)
-            _end = State(initialValue: entry.end ?? .now)
             _entryDate = State(initialValue: entry.start)
+            _durationText = State(initialValue: TimerDurationInput.format(entry.duration))
+            originalDuration = entry.duration
         }
     }
 
@@ -97,14 +105,7 @@ struct TimerComposerView: View {
                         .accessibilityLabel("Notes")
                         .timenCard()
 
-                    Text(elapsedText)
-                        .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 112)
-                        .frame(minHeight: 76)
-                        .accessibilityLabel("Elapsed duration")
-                        .accessibilityValue(elapsedText)
-                        .timenCard()
+                    durationEditor
                 }
 
                 if !appModel.connectivity.isOnline {
@@ -113,19 +114,31 @@ struct TimerComposerView: View {
                         .foregroundStyle(.orange)
                 }
 
-                if case .edit = mode {
-                    DatePicker("Date", selection: $entryDate, displayedComponents: .date)
+                if let message = appModel.composerProjectRefreshMessage {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityHint("Changes the entry date while preserving its time and duration")
+                }
+
+                if let durationValidationMessage {
+                    Label(durationValidationMessage, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
             .padding(18)
 
             Divider()
             HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                if supportsDateEditing {
+                    composerDateField
+                } else {
+                    cancelButton
+                }
                 Spacer()
+                if supportsDateEditing { cancelButton }
                 if case .running = mode {
                     Button("Stop") {
                         dismiss()
@@ -138,15 +151,126 @@ struct TimerComposerView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(TimenBarTheme.accent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(
-                        end < start || !appModel.connectivity.isOnline ||
-                            appModel.authenticationState != .signedIn
-                    )
+                    .disabled(!canSubmit)
             }
             .padding(14)
             .background(.bar)
         }
         .frame(width: 520)
+    }
+
+    @ViewBuilder
+    private var durationEditor: some View {
+        switch mode {
+        case .running:
+            Text(elapsedText)
+                .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 112)
+                .frame(minHeight: 76)
+                .accessibilityLabel("Elapsed duration")
+                .accessibilityValue(elapsedText)
+                .timenCard()
+        case .new, .restart, .edit:
+            TextField("H:MM", text: $durationText)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
+                .foregroundStyle(durationForSubmission == nil ? .red : .primary)
+                .frame(width: 112)
+                .frame(minHeight: 76)
+                .accessibilityLabel("Duration")
+                .accessibilityValue(durationText)
+                .accessibilityHint("Enter hours and minutes in H:MM format")
+                .onChange(of: durationText) { _, _ in durationWasEdited = true }
+                .timenCard()
+        }
+    }
+
+    private var cancelButton: some View {
+        Button("Cancel", role: .cancel) { dismiss() }
+            .keyboardShortcut(.cancelAction)
+    }
+
+    private var composerDateField: some View {
+        Button { isDatePickerPresented.toggle() } label: {
+            HStack(spacing: 9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(Color.secondary, lineWidth: 1.5)
+                        .frame(width: 30, height: 27)
+                        .offset(y: 2)
+                    Rectangle()
+                        .fill(Color.secondary)
+                        .frame(width: 28, height: 1)
+                        .offset(y: -5)
+                    HStack(spacing: 13) {
+                        Capsule().fill(Color.secondary).frame(width: 2, height: 5)
+                        Capsule().fill(Color.secondary).frame(width: 2, height: 5)
+                    }
+                    .offset(y: -13)
+                    Text(dateDayText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.primary)
+                        .offset(y: 4)
+                }
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+
+                Text(dateMonthText)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 40)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Change entry date")
+        .accessibilityLabel("Date")
+        .accessibilityValue(dateAccessibilityValue)
+        .accessibilityHint(dateAccessibilityHint)
+        .popover(isPresented: $isDatePickerPresented, arrowEdge: .bottom) {
+            DatePicker(
+                "Date",
+                selection: $entryDate,
+                in: ...appModel.now,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .accessibilityLabel("Date")
+            .padding(12)
+            .environment(\.timeZone, appModel.accountCalendar.timeZone)
+        }
+    }
+
+    private var dateDayText: String {
+        formattedEntryDate(.dateTime.day())
+    }
+
+    private var dateMonthText: String {
+        let calendar = appModel.accountCalendar
+        if calendar.component(.year, from: entryDate) != calendar.component(.year, from: appModel.now) {
+            return formattedEntryDate(.dateTime.month(.abbreviated).year())
+        }
+        return formattedEntryDate(.dateTime.month(.abbreviated))
+    }
+
+    private var dateAccessibilityValue: String {
+        formattedEntryDate(
+            .dateTime
+                .weekday(.wide)
+                .month(.wide)
+                .day()
+                .year()
+        )
+    }
+
+    private func formattedEntryDate(_ format: Date.FormatStyle) -> String {
+        var format = format
+        format.timeZone = appModel.accountCalendar.timeZone
+        return format.format(entryDate)
     }
 
     private var projectTypeahead: some View {
@@ -165,9 +289,16 @@ struct TimerComposerView: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if appModel.isRefreshingComposerProjects {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 16)
+                        .accessibilityLabel("Refreshing projects")
+                } else {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 12)
             .frame(height: 50)
@@ -271,8 +402,108 @@ struct TimerComposerView: View {
 
     private var primaryTitle: String {
         switch mode {
-        case .new, .restart: "Start"
+        case .new, .restart: (durationForSubmission ?? 0) > 0 ? "Save" : "Start"
         case .running, .edit: "Save"
+        }
+    }
+
+    private var supportsDateEditing: Bool {
+        switch mode {
+        case .new, .restart, .edit: true
+        case .running: false
+        }
+    }
+
+    private var durationForSubmission: TimeInterval? {
+        guard let parsed = TimerDurationInput.parse(durationText) else { return nil }
+        if case .edit = mode, !durationWasEdited { return originalDuration }
+        return parsed
+    }
+
+    private var canSubmit: Bool {
+        guard appModel.connectivity.isOnline,
+              appModel.authenticationState == .signedIn
+        else { return false }
+
+        switch mode {
+        case .running:
+            return true
+        case .edit:
+            guard !isFutureEntryDate,
+                  (durationForSubmission ?? 0) > 0,
+                  let interval = editedInterval
+            else { return false }
+            return !endsInFuture(interval)
+        case .new, .restart:
+            guard !isFutureEntryDate, let duration = durationForSubmission else { return false }
+            if duration == 0 { return isEntryDateToday }
+            guard let interval = manualInterval else { return false }
+            return !endsInFuture(interval)
+        }
+    }
+
+    private var manualInterval: (start: Date, end: Date)? {
+        guard let duration = durationForSubmission else { return nil }
+        return TimerDateChange.ending(
+            at: appModel.now,
+            duration: duration,
+            on: entryDate,
+            calendar: appModel.accountCalendar
+        )
+    }
+
+    private var editedInterval: (start: Date, end: Date)? {
+        guard let duration = durationForSubmission else { return nil }
+        return TimerDateChange.shifting(
+            start: start,
+            duration: duration,
+            to: entryDate,
+            calendar: appModel.accountCalendar
+        )
+    }
+
+    private func endsInFuture(_ interval: (start: Date, end: Date)) -> Bool {
+        interval.end > appModel.now.addingTimeInterval(1)
+    }
+
+    private var isEntryDateToday: Bool {
+        appModel.accountCalendar.isDate(entryDate, inSameDayAs: appModel.now)
+    }
+
+    private var isFutureEntryDate: Bool {
+        let calendar = appModel.accountCalendar
+        return calendar.startOfDay(for: entryDate) > calendar.startOfDay(for: appModel.now)
+    }
+
+    private var durationValidationMessage: String? {
+        guard supportsDateEditing else { return nil }
+        guard let duration = durationForSubmission else { return "Enter duration as H:MM." }
+        if isFutureEntryDate { return "Choose today or an earlier date." }
+        switch mode {
+        case .edit:
+            if duration == 0 { return "Duration must be greater than 0:00." }
+            if let interval = editedInterval, endsInFuture(interval) {
+                return "Duration extends into the future. Choose an earlier date or shorter duration."
+            }
+            return nil
+        case .new, .restart:
+            if duration == 0 && !isEntryDateToday {
+                return "Enter a duration to save time on a past date."
+            }
+            if duration > 0, let interval = manualInterval, endsInFuture(interval) {
+                return "Duration extends into the future. Choose an earlier date or shorter duration."
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private var dateAccessibilityHint: String {
+        switch mode {
+        case .edit: "Changes the entry date while preserving its start time"
+        case .new, .restart: "Sets the date for manually logged time"
+        case .running: ""
         }
     }
 
@@ -280,7 +511,7 @@ struct TimerComposerView: View {
         switch mode {
         case .new, .restart: "0:00"
         case .running: appModel.runningDisplayDuration.timerText
-        case .edit: max(0, end.timeIntervalSince(start)).timerText
+        case .edit: originalDuration.timerText
         }
     }
 
@@ -288,16 +519,28 @@ struct TimerComposerView: View {
         let billableDraft = draft.enforcingBillable
         switch mode {
         case .new, .restart:
-            Task { await appModel.startTimer(billableDraft, source: "timer-composer") }
+            guard let duration = durationForSubmission else { return }
+            if duration == 0 {
+                guard isEntryDateToday else { return }
+                Task { await appModel.startTimer(billableDraft, source: "timer-composer") }
+            } else {
+                guard let interval = manualInterval, !endsInFuture(interval) else { return }
+                Task {
+                    await appModel.logTime(
+                        start: interval.start,
+                        end: interval.end,
+                        draft: billableDraft,
+                        source: "timer-composer"
+                    )
+                }
+            }
         case .running:
             appModel.updateRunningTimer(billableDraft)
         case let .edit(entry):
-            let shifted = TimerDateChange.shifting(
-                start: start,
-                end: end,
-                to: entryDate,
-                calendar: appModel.accountCalendar
-            )
+            guard (durationForSubmission ?? 0) > 0,
+                  let shifted = editedInterval,
+                  !endsInFuture(shifted)
+            else { return }
             Task {
                 await appModel.updateEntry(
                     entry,
@@ -403,6 +646,7 @@ private struct ProjectTypeaheadPopover: View {
                     }
                 }
             }
+
         }
         .frame(width: 350, height: 320)
         .onAppear {

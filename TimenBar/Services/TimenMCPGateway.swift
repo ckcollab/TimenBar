@@ -190,37 +190,34 @@ actor TimenMCPGateway: TimenGateway {
         var additionalValues = [
             SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
         ]
-        if let start {
-            additionalValues.append(
-                SemanticArgument(names: ["start", "started_at", "start_time"], value: .string(Self.dateString(start)))
-            )
-        }
-        if let end {
-            additionalValues.append(
-                SemanticArgument(names: ["end", "ended_at", "end_time"], value: .string(Self.dateString(end)))
-            )
-        }
+        additionalValues += TimenMCPUpdateTiming.arguments(start: start, end: end)
         let arguments = try draftArguments(
             draft,
             tool: "timen_update_time_entry",
             additionalValues: additionalValues
         )
+        try TimenMCPUpdateTiming.validateEmission(in: arguments, start: start, end: end)
         let value = try await call("timen_update_time_entry", arguments: arguments)
         let candidate = value.firstValue(keys: ["time_entry", "entry", "data"]) ?? value
-        return try TimenMCPResponseParser.entry(from: candidate)
+        let updated = try TimenMCPResponseParser.entry(from: candidate)
+        try TimenMCPUpdateTiming.validateResponse(updated, requestedStart: start, requestedEnd: end)
+        return updated
     }
 
     func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry {
         let arguments = try draftArguments(draft, tool: "timen_update_time_entry", additionalValues: [
             SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
-            SemanticArgument(names: ["duration"], value: .int(max(0, Int(duration.rounded())))),
+            TimenMCPUpdateTiming.durationArgument(duration),
         ])
+        try TimenMCPUpdateTiming.validateDurationEmission(in: arguments)
         let value = try await call(
             "timen_update_time_entry",
             arguments: arguments
         )
         let candidate = value.firstValue(keys: ["time_entry", "entry", "data"]) ?? value
-        return try TimenMCPResponseParser.entry(from: candidate)
+        let updated = try TimenMCPResponseParser.entry(from: candidate)
+        try TimenMCPUpdateTiming.validateDurationResponse(updated, requestedDuration: duration)
+        return updated
     }
 
     func deleteEntry(id: String) async throws {
@@ -389,6 +386,97 @@ actor TimenMCPGateway: TimenGateway {
 struct SemanticArgument {
     var names: [String]
     var value: Value
+}
+
+enum TimenMCPUpdateTiming {
+    private static let responseTolerance: TimeInterval = 1.01
+    private static let durationAffectingNames: Set<String> = [
+        "end", "ended_at", "end_time", "duration",
+    ]
+
+    static func arguments(start: Date?, end: Date?) -> [SemanticArgument] {
+        var values: [SemanticArgument] = []
+        if let start {
+            values.append(
+                SemanticArgument(
+                    names: ["start", "started_at", "start_time"],
+                    value: .string(TimenMCPGateway.dateString(start))
+                )
+            )
+        }
+        if let end {
+            values.append(
+                SemanticArgument(
+                    names: ["end", "ended_at", "end_time"],
+                    value: .string(TimenMCPGateway.dateString(end))
+                )
+            )
+        }
+        if let start, let end {
+            values.append(durationArgument(end.timeIntervalSince(start)))
+        }
+        return values
+    }
+
+    static func durationArgument(_ duration: TimeInterval) -> SemanticArgument {
+        SemanticArgument(
+            names: ["duration"],
+            value: .int(max(0, Int(duration.rounded())))
+        )
+    }
+
+    static func validateEmission(in arguments: [String: Value], start: Date?, end: Date?) throws {
+        guard start != nil, end != nil else { return }
+        guard durationAffectingNames.contains(where: { arguments[$0] != nil }) else {
+            throw TimenBarError.invalidResponse(
+                "Tool timen_update_time_entry does not accept a recognized end or duration field; " +
+                    "TimenBar cannot safely edit entry duration."
+            )
+        }
+    }
+
+    static func validateDurationEmission(in arguments: [String: Value]) throws {
+        guard arguments["duration"] != nil else {
+            throw TimenBarError.invalidResponse(
+                "Tool timen_update_time_entry does not accept its documented duration field; " +
+                    "TimenBar cannot safely extend this entry."
+            )
+        }
+    }
+
+    static func validateResponse(
+        _ entry: TimeEntry,
+        requestedStart: Date?,
+        requestedEnd: Date?
+    ) throws {
+        if let requestedStart,
+           abs(entry.start.timeIntervalSince(requestedStart)) > responseTolerance
+        {
+            throw TimenBarError.invalidResponse(
+                "Timen did not apply the requested time-entry start. The entry was left open for review."
+            )
+        }
+
+        if let requestedStart, let requestedEnd {
+            let requestedDuration = max(0, requestedEnd.timeIntervalSince(requestedStart))
+            try validateDurationResponse(entry, requestedDuration: requestedDuration)
+        } else if let requestedEnd,
+                  let actualEnd = entry.end,
+                  abs(actualEnd.timeIntervalSince(requestedEnd)) > responseTolerance
+        {
+            throw TimenBarError.invalidResponse(
+                "Timen did not apply the requested time-entry end. The entry was left open for review."
+            )
+        }
+    }
+
+    static func validateDurationResponse(_ entry: TimeEntry, requestedDuration: TimeInterval) throws {
+        guard abs(entry.duration - max(0, requestedDuration)) <= responseTolerance else {
+            throw TimenBarError.invalidResponse(
+                "Timen did not apply the requested time-entry duration. The entry was left open for review."
+            )
+        }
+    }
 }
 
 enum TimenMCPEntryScope {

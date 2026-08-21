@@ -72,6 +72,132 @@ final class TimenMCPGatewayTests: XCTestCase {
         )
     }
 
+    func testCompletedEntryUpdateEmitsDurationAlongsideStartAndEnd() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(5_400)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["start", "end", "duration"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        XCTAssertNotNil(arguments["start"]?.stringValue)
+        XCTAssertNotNil(arguments["end"]?.stringValue)
+        XCTAssertEqual(arguments["duration"], .int(5_400))
+    }
+
+    func testCompletedEntryUpdateOmitsDurationForPartialTimingChange() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["start", "duration"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: nil)
+        )
+
+        XCTAssertNotNil(arguments["start"]?.stringValue)
+        XCTAssertNil(arguments["duration"])
+    }
+
+    func testCompletedEntryUpdateSupportsDurationOnlySchema() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(7_200)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["duration"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        XCTAssertEqual(arguments, ["duration": .int(7_200)])
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateEmission(in: arguments, start: start, end: end))
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateDurationEmission(in: arguments))
+    }
+
+    func testCompletedEntryUpdateSupportsEndOnlySchema() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(7_200)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["end"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        XCTAssertNotNil(arguments["end"]?.stringValue)
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateEmission(in: arguments, start: start, end: end))
+    }
+
+    func testCompletedEntryUpdateRejectsSchemaThatCannotChangeDuration() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(7_200)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["start"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        assertInvalidResponse(contains: "cannot safely edit entry duration") {
+            try TimenMCPUpdateTiming.validateEmission(in: arguments, start: start, end: end)
+        }
+    }
+
+    func testCompletedEntryUpdateAcceptsServerTimingRoundedToSeconds() throws {
+        let requestedStart = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+            .addingTimeInterval(0.75)
+        let requestedEnd = requestedStart.addingTimeInterval(5_400)
+        let returned = completedEntry(
+            start: requestedStart.addingTimeInterval(-0.75),
+            duration: 5_400
+        )
+
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateResponse(
+            returned,
+            requestedStart: requestedStart,
+            requestedEnd: requestedEnd
+        ))
+    }
+
+    func testCompletedEntryUpdateRejectsStaleServerDuration() throws {
+        let requestedStart = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let requestedEnd = requestedStart.addingTimeInterval(5_400)
+        let stale = completedEntry(start: requestedStart, duration: 3_600)
+
+        assertInvalidResponse(contains: "did not apply the requested time-entry duration") {
+            try TimenMCPUpdateTiming.validateResponse(
+                stale,
+                requestedStart: requestedStart,
+                requestedEnd: requestedEnd
+            )
+        }
+    }
+
+    func testCompletedEntryUpdateRejectsStaleServerStart() throws {
+        let requestedStart = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let requestedEnd = requestedStart.addingTimeInterval(5_400)
+        let stale = completedEntry(start: requestedStart.addingTimeInterval(-60), duration: 5_400)
+
+        assertInvalidResponse(contains: "did not apply the requested time-entry start") {
+            try TimenMCPUpdateTiming.validateResponse(
+                stale,
+                requestedStart: requestedStart,
+                requestedEnd: requestedEnd
+            )
+        }
+    }
+
+    func testDurationOnlyUpdateRejectsSchemaThatDropsDuration() {
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["end"]),
+            values: [TimenMCPUpdateTiming.durationArgument(5_400)]
+        )
+
+        assertInvalidResponse(contains: "does not accept its documented duration field") {
+            try TimenMCPUpdateTiming.validateDurationEmission(in: arguments)
+        }
+    }
+
+    func testDurationOnlyUpdateRejectsStaleServerDuration() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let stale = completedEntry(start: start, duration: 3_600)
+
+        assertInvalidResponse(contains: "did not apply the requested time-entry duration") {
+            try TimenMCPUpdateTiming.validateDurationResponse(stale, requestedDuration: 5_400)
+        }
+    }
+
     func testOwnerAndAdminEntryQueriesEmitRecognizedSelfFilter() {
         let schema = inputSchema(properties: ["member_id"])
 
@@ -368,6 +494,22 @@ final class TimenMCPGatewayTests: XCTestCase {
     private func ownerlessEntryResponse() throws -> Value {
         try fixture(
             #"{"entries":[{"id":"100","start":"2026-08-20T16:00:00Z","end":"2026-08-20T17:00:00Z"}]}"#
+        )
+    }
+
+    private func completedEntry(start: Date, duration: TimeInterval) -> TimeEntry {
+        TimeEntry(
+            id: "entry",
+            remoteID: "entry",
+            start: start,
+            end: start.addingTimeInterval(duration),
+            projectID: nil,
+            projectName: nil,
+            clientName: nil,
+            note: "",
+            tags: [],
+            billable: true,
+            syncState: .synced
         )
     }
 

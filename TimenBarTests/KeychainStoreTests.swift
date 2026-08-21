@@ -2,6 +2,18 @@ import XCTest
 @testable import TimenBar
 
 final class KeychainStoreTests: XCTestCase {
+    func testDevelopmentAndProductionCredentialsUseDifferentServices() {
+        XCTAssertEqual(KeychainStore.legacyService, "app.timenbar.TimenBar.oauth")
+        XCTAssertEqual(KeychainStore.productionService, "app.timenbar.TimenBar.oauth.v2")
+        XCTAssertEqual(KeychainStore.developmentService, "app.timenbar.TimenBar.oauth.v2.development")
+        XCTAssertNotEqual(KeychainStore.legacyService, KeychainStore.productionService)
+        XCTAssertNotEqual(KeychainStore.productionService, KeychainStore.developmentService)
+
+        #if DEBUG
+        XCTAssertEqual(KeychainStore.defaultService, KeychainStore.developmentService)
+        #endif
+    }
+
     func testTokenLifecycle() async throws {
         let store = KeychainStore(service: "app.timenbar.tests.\(UUID().uuidString)")
         let account = "tokens"
