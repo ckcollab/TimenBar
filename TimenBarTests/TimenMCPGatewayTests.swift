@@ -85,6 +85,42 @@ final class TimenMCPGatewayTests: XCTestCase {
         XCTAssertEqual(arguments["duration"], .int(5_400))
     }
 
+    func testCompletedEntryUpdateSupportsTimenStoppedAtSchema() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(5_400)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["started_at", "stopped_at", "duration"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        XCTAssertNotNil(arguments["started_at"]?.stringValue)
+        XCTAssertNotNil(arguments["stopped_at"]?.stringValue)
+        XCTAssertEqual(arguments["duration"], .int(5_400))
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateEmission(
+            in: arguments,
+            start: start,
+            end: end
+        ))
+    }
+
+    func testCompletedEntryUpdateSupportsDurationSecondsFallback() throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
+        let end = start.addingTimeInterval(7_200)
+        let arguments = TimenMCPArgumentBuilder.arguments(
+            schema: inputSchema(properties: ["started_at", "duration_seconds"]),
+            values: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+
+        XCTAssertNotNil(arguments["started_at"]?.stringValue)
+        XCTAssertEqual(arguments["duration_seconds"], .int(7_200))
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateEmission(
+            in: arguments,
+            start: start,
+            end: end
+        ))
+        XCTAssertNoThrow(try TimenMCPUpdateTiming.validateDurationEmission(in: arguments))
+    }
+
     func testCompletedEntryUpdateOmitsDurationForPartialTimingChange() throws {
         let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
         let arguments = TimenMCPArgumentBuilder.arguments(
@@ -196,6 +232,16 @@ final class TimenMCPGatewayTests: XCTestCase {
         assertInvalidResponse(contains: "did not apply the requested time-entry duration") {
             try TimenMCPUpdateTiming.validateDurationResponse(stale, requestedDuration: 5_400)
         }
+    }
+
+    func testEntryResponseParsesStoppedAt() throws {
+        let value = try fixture(
+            #"{"id":"100","started_at":"2026-08-20T16:00:00Z","stopped_at":"2026-08-20T17:30:00Z"}"#
+        )
+
+        let entry = try TimenMCPResponseParser.entry(from: value)
+
+        XCTAssertEqual(entry.duration, 5_400, accuracy: 0.01)
     }
 
     func testOwnerAndAdminEntryQueriesEmitRecognizedSelfFilter() {

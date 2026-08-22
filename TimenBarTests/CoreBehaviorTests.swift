@@ -226,6 +226,31 @@ final class CoreBehaviorTests: XCTestCase {
 
 @MainActor
 final class AppModelAccountIsolationTests: XCTestCase {
+    func testNewTimerUsesTheSelectedDayAsItsInitialDate() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        let selectedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        model.selectDay(selectedDate)
+
+        model.presentNewTimer()
+
+        guard case let .new(_, composerDate)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(composerDate, selectedDate)
+    }
+
     func testOpeningComposerRefreshesProjectsAndPersistsLatestCatalog() async throws {
         let container = try makeContainer()
         let activeAccount = account(id: "account")
@@ -281,6 +306,89 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(model.projects, [original])
         XCTAssertEqual(try OfflineStore(container: container).projects(), [original])
         XCTAssertEqual(model.composerProjectRefreshMessage, "Couldn’t refresh projects. Showing saved projects.")
+    }
+
+    func testDismissingComposerClearsItsPresentationAndMutationContext() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentNewTimer()
+        XCTAssertNotNil(model.composerMode)
+
+        model.dismissComposer()
+
+        XCTAssertNil(model.composerMode)
+        XCTAssertFalse(model.isRefreshingComposerProjects)
+        XCTAssertNil(model.composerProjectRefreshMessage)
+
+        await model.startTimer(.empty, source: "timer-composer")
+        let startCalls = await gateway.startTimerCallCount()
+        XCTAssertEqual(startCalls, 0)
+        XCTAssertEqual(model.errorMessage, "That timer form belongs to a previous Timen account.")
+    }
+
+    func testOpeningAnotherFormKeepsTheExistingDraftAndRequestsItsWindow() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let existingEntry = entry(id: "entry", project: project, note: "Existing")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [existingEntry]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentNewTimer()
+        let firstRequest = try XCTUnwrap(model.composerPresentationRequestID)
+
+        model.presentEdit(existingEntry)
+
+        guard case .new? = model.composerMode else {
+            return XCTFail("Opening another form should preserve the existing draft")
+        }
+        XCTAssertNotEqual(model.composerPresentationRequestID, firstRequest)
+    }
+
+    func testStoppingTimerOutsideTheFormDismissesRunningComposer() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentNewTimer()
+        await model.startTimer(.empty)
+        model.presentRunningTimer()
+        guard case .running? = model.composerMode else {
+            return XCTFail("Expected the running timer form")
+        }
+
+        await model.stopTimer(source: "status-bar")
+
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.composerMode)
     }
 
     func testManualTimeUsesCompletedLogMutationAndRejectsFutureEnd() async throws {
@@ -887,7 +995,22 @@ private actor AccountLifecycleGateway: TimenGateway {
             note: draft.note, tags: [], billable: true, syncState: .synced
         )
     }
-    func stopTimer() async throws -> TimeEntry { throw AccountLifecycleGatewayError.unsupportedMutation }
+    func stopTimer() async throws -> TimeEntry {
+        let end = Date.now
+        return TimeEntry(
+            id: "stopped-entry",
+            remoteID: "stopped-entry",
+            start: end.addingTimeInterval(-60),
+            end: end,
+            projectID: nil,
+            projectName: nil,
+            clientName: nil,
+            note: "",
+            tags: [],
+            billable: true,
+            syncState: .synced
+        )
+    }
     func logTime(start: Date, end: Date, draft: TimerDraft) async throws -> TimeEntry {
         logTimeCalls.append(LogTimeCall(start: start, end: end, draft: draft))
         let project = projectValues.first { $0.id == draft.projectID }

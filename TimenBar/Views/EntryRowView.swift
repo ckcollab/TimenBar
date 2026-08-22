@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
 struct EntryRowView: View {
     @Environment(AppModel.self) private var appModel
     let entry: TimeEntry
+    let presentComposer: (TimeEntry, CGPoint) -> Void
     @State private var confirmDelete = false
+    @State private var pointerLocation: CGPoint?
 
     private var isRunning: Bool { appModel.isRunningEntry(entry) }
 
@@ -31,10 +34,11 @@ struct EntryRowView: View {
                 Text(appModel.displayDuration(for: entry).timerText)
                     .font(.title3.monospacedDigit())
             }
+            .padding(.leading, 16)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
-                if isRunning { appModel.presentRunningTimer() }
-                else { appModel.presentEdit(entry) }
+                presentComposer(entry, NSEvent.mouseLocation)
             }
             Button {
                 Task {
@@ -47,17 +51,26 @@ struct EntryRowView: View {
                     .foregroundStyle(isRunning ? TimenBarTheme.accent : .primary)
             }
             .buttonStyle(.plain)
+            .padding(.trailing, 16)
             .help(isRunning ? "Pause this entry" : "Start this entry")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            if case .active = phase {
+                pointerLocation = NSEvent.mouseLocation
+            }
+        }
         .contextMenu {
             if isRunning {
-                Button("Edit Running Timer") { appModel.presentRunningTimer() }
+                Button("Edit Running Timer") {
+                    presentComposer(entry, pointerLocation ?? NSEvent.mouseLocation)
+                }
                 Button("Pause") { Task { await appModel.stopTimer(source: "entry-context-menu-pause") } }
             } else {
-                Button("Edit") { appModel.presentEdit(entry) }
+                Button("Edit") {
+                    presentComposer(entry, pointerLocation ?? NSEvent.mouseLocation)
+                }
                 Button("Start") { Task { await appModel.restartEntry(entry, source: "entry-context-menu") } }
                 Divider()
                 Button("Delete", role: .destructive) { confirmDelete = true }

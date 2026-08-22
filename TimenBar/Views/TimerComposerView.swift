@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TimerComposerView: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.dismiss) private var dismiss
 
     let mode: TimerComposerMode
     @State private var draft: TimerDraft
@@ -10,6 +9,7 @@ struct TimerComposerView: View {
     @State private var entryDate: Date
     @State private var durationText: String
     @State private var durationWasEdited = false
+    @State private var hasAttemptedSubmit = false
     @State private var isProjectPopoverPresented = false
     @State private var isTagPopoverPresented = false
     @State private var isDatePickerPresented = false
@@ -19,10 +19,10 @@ struct TimerComposerView: View {
         self.mode = mode
         let now = Date.now
         switch mode {
-        case let .new(draft):
+        case let .new(draft, selectedDate):
             _draft = State(initialValue: draft.enforcingBillable)
             _start = State(initialValue: now)
-            _entryDate = State(initialValue: now)
+            _entryDate = State(initialValue: selectedDate)
             _durationText = State(initialValue: TimerDurationInput.format(0))
             originalDuration = 0
         case let .running(timer):
@@ -121,7 +121,7 @@ struct TimerComposerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if let durationValidationMessage {
+                if hasAttemptedSubmit, let durationValidationMessage {
                     Label(durationValidationMessage, systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.red)
@@ -141,7 +141,7 @@ struct TimerComposerView: View {
                 if supportsDateEditing { cancelButton }
                 if case .running = mode {
                     Button("Stop") {
-                        dismiss()
+                        appModel.dismissComposer()
                         Task { await appModel.stopTimer(source: "running-composer-stop") }
                     }
                     .buttonStyle(.bordered)
@@ -151,7 +151,7 @@ struct TimerComposerView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(TimenBarTheme.accent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSubmit)
+                    .disabled(!canAttemptSubmit)
             }
             .padding(14)
             .background(.bar)
@@ -176,7 +176,9 @@ struct TimerComposerView: View {
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
                 .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
-                .foregroundStyle(durationForSubmission == nil ? .red : .primary)
+                .foregroundStyle(
+                    hasAttemptedSubmit && durationForSubmission == nil ? .red : .primary
+                )
                 .frame(width: 112)
                 .frame(minHeight: 76)
                 .accessibilityLabel("Duration")
@@ -188,7 +190,7 @@ struct TimerComposerView: View {
     }
 
     private var cancelButton: some View {
-        Button("Cancel", role: .cancel) { dismiss() }
+        Button("Cancel", role: .cancel) { appModel.dismissComposer() }
             .keyboardShortcut(.cancelAction)
     }
 
@@ -421,9 +423,7 @@ struct TimerComposerView: View {
     }
 
     private var canSubmit: Bool {
-        guard appModel.connectivity.isOnline,
-              appModel.authenticationState == .signedIn
-        else { return false }
+        guard canAttemptSubmit else { return false }
 
         switch mode {
         case .running:
@@ -440,6 +440,10 @@ struct TimerComposerView: View {
             guard let interval = manualInterval else { return false }
             return !endsInFuture(interval)
         }
+    }
+
+    private var canAttemptSubmit: Bool {
+        appModel.connectivity.isOnline && appModel.authenticationState == .signedIn
     }
 
     private var manualInterval: (start: Date, end: Date)? {
@@ -516,6 +520,10 @@ struct TimerComposerView: View {
     }
 
     private func performPrimaryAction() {
+        guard canAttemptSubmit else { return }
+        hasAttemptedSubmit = true
+        guard canSubmit else { return }
+
         let billableDraft = draft.enforcingBillable
         switch mode {
         case .new, .restart:

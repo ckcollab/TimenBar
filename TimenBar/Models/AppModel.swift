@@ -39,6 +39,7 @@ final class AppModel {
     var composerMode: TimerComposerMode? {
         didSet {
             if composerMode == nil {
+                composerPresentationRequestID = nil
                 composerAccountID = nil
                 composerSessionID = nil
                 composerProjectRefreshTask?.cancel()
@@ -48,6 +49,7 @@ final class AppModel {
             }
         }
     }
+    private(set) var composerPresentationRequestID: UUID?
     var idlePrompt: IdlePromptState?
     private(set) var lastTimerDraft: TimerDraft?
     private(set) var resumedEntryID: String?
@@ -419,7 +421,7 @@ final class AppModel {
 
     func presentNewTimer() {
         guard let accountID = account?.id else { return }
-        presentComposer(.new(.empty), for: accountID)
+        presentComposer(.new(.empty, selectedDate), for: accountID)
     }
 
     func presentRunningTimer() {
@@ -446,6 +448,10 @@ final class AppModel {
         }
         guard let accountID = account?.id else { return }
         presentComposer(.edit(entry), for: accountID)
+    }
+
+    func dismissComposer() {
+        composerMode = nil
     }
 
     func restartEntry(_ entry: TimeEntry, source: String = "entry") async {
@@ -631,6 +637,7 @@ final class AppModel {
                 if let updatedID = updated.remoteID { focus(on: updatedID) }
                 try? store.deleteEntry(id: original.id)
                 try? store.upsertEntries([updated])
+                dismissRunningComposerIfNeeded()
                 return
             }
             var remote = try await gateway.stopTimer()
@@ -658,6 +665,7 @@ final class AppModel {
             if let remoteID = remote.remoteID { focus(on: remoteID) }
             try? store.deleteEntry(id: timer.id)
             try? store.upsertEntries([remote])
+            dismissRunningComposerIfNeeded()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             errorMessage = error.localizedDescription
@@ -900,6 +908,11 @@ final class AppModel {
     }
 
     private func presentComposer(_ mode: TimerComposerMode, for accountID: String) {
+        if composerMode != nil {
+            composerPresentationRequestID = UUID()
+            return
+        }
+
         composerProjectRefreshTask?.cancel()
         let sessionID = UUID()
         composerAccountID = accountID
@@ -907,6 +920,7 @@ final class AppModel {
         composerProjectRefreshMessage = nil
         isRefreshingComposerProjects = false
         composerMode = mode
+        composerPresentationRequestID = UUID()
 
         guard authenticationState == .signedIn, connectivity.isOnline else { return }
         let refreshID = beginProjectRefreshRequest()
@@ -918,6 +932,11 @@ final class AppModel {
                 refreshID: refreshID
             )
         }
+    }
+
+    private func dismissRunningComposerIfNeeded() {
+        guard case .running? = composerMode else { return }
+        dismissComposer()
     }
 
     private func refreshProjectsForComposer(
@@ -1171,7 +1190,7 @@ final class AppModel {
 }
 
 enum TimerComposerMode: Identifiable {
-    case new(TimerDraft)
+    case new(TimerDraft, Date)
     case running(RunningTimer)
     case restart(TimeEntry, TimerDraft)
     case edit(TimeEntry)

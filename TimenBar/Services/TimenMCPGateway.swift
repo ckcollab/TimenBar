@@ -177,10 +177,12 @@ actor TimenMCPGateway: TimenGateway {
     }
 
     func logTime(start: Date, end: Date, draft: TimerDraft) async throws -> TimeEntry {
-        let arguments = try draftArguments(draft, tool: "timen_log_time", additionalValues: [
-            SemanticArgument(names: ["start", "started_at", "start_time"], value: .string(Self.dateString(start))),
-            SemanticArgument(names: ["end", "ended_at", "end_time"], value: .string(Self.dateString(end))),
-        ])
+        let arguments = try draftArguments(
+            draft,
+            tool: "timen_log_time",
+            additionalValues: TimenMCPUpdateTiming.arguments(start: start, end: end)
+        )
+        try TimenMCPUpdateTiming.validateEmission(in: arguments, start: start, end: end)
         let value = try await call("timen_log_time", arguments: arguments)
         let candidate = value.firstValue(keys: ["time_entry", "entry", "data"]) ?? value
         return try TimenMCPResponseParser.entry(from: candidate)
@@ -391,7 +393,7 @@ struct SemanticArgument {
 enum TimenMCPUpdateTiming {
     private static let responseTolerance: TimeInterval = 1.01
     private static let durationAffectingNames: Set<String> = [
-        "end", "ended_at", "end_time", "duration",
+        "end", "ended_at", "end_time", "stopped_at", "duration", "duration_seconds",
     ]
 
     static func arguments(start: Date?, end: Date?) -> [SemanticArgument] {
@@ -407,7 +409,7 @@ enum TimenMCPUpdateTiming {
         if let end {
             values.append(
                 SemanticArgument(
-                    names: ["end", "ended_at", "end_time"],
+                    names: ["end", "ended_at", "end_time", "stopped_at"],
                     value: .string(TimenMCPGateway.dateString(end))
                 )
             )
@@ -420,7 +422,7 @@ enum TimenMCPUpdateTiming {
 
     static func durationArgument(_ duration: TimeInterval) -> SemanticArgument {
         SemanticArgument(
-            names: ["duration"],
+            names: ["duration", "duration_seconds"],
             value: .int(max(0, Int(duration.rounded())))
         )
     }
@@ -436,7 +438,7 @@ enum TimenMCPUpdateTiming {
     }
 
     static func validateDurationEmission(in arguments: [String: Value]) throws {
-        guard arguments["duration"] != nil else {
+        guard arguments["duration"] != nil || arguments["duration_seconds"] != nil else {
             throw TimenBarError.invalidResponse(
                 "Tool timen_update_time_entry does not accept its documented duration field; " +
                     "TimenBar cannot safely extend this entry."
@@ -840,7 +842,7 @@ enum TimenMCPResponseParser {
         guard let start = value.date(keys: ["start", "started_at", "start_time", "startedAt", "date", "entry_date"]) else {
             throw TimenBarError.invalidResponse("Time entry \(remoteID) did not include a valid start time.")
         }
-        let explicitEnd = value.date(keys: ["end", "ended_at", "end_time", "endedAt"])
+        let explicitEnd = value.date(keys: ["end", "ended_at", "end_time", "stopped_at", "endedAt"])
         let parsedDuration = TimenDurationParser.duration(from: value)
         let end = explicitEnd ?? parsedDuration.map { start.addingTimeInterval($0) } ?? start
         guard end >= start else {

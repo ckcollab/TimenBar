@@ -4,6 +4,9 @@ import SwiftUI
 struct MenuBarPanel: View {
     @Environment(AppModel.self) private var appModel
     let showSettings: () -> Void
+    let presentNewTimer: (CGPoint) -> Void
+    let presentEntryComposer: (TimeEntry, CGPoint) -> Void
+    @State private var newTimerPointerLocation: CGPoint?
 
     var body: some View {
         @Bindable var model = appModel
@@ -25,9 +28,18 @@ struct MenuBarPanel: View {
         }
         .frame(width: 448, height: 620)
         .background(TimenBarTheme.panel)
-        .sheet(item: $model.composerMode) { mode in
-            TimerComposerView(mode: mode)
-                .environment(appModel)
+        .overlay {
+            if appModel.composerMode != nil {
+                Button {
+                    appModel.dismissComposer()
+                } label: {
+                    Color.black.opacity(0.38)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close timer form")
+                .accessibilityHint("Dismisses the open timer form")
+            }
         }
         .sheet(item: $model.idlePrompt) { prompt in
             IdlePromptView(prompt: prompt)
@@ -90,13 +102,15 @@ struct MenuBarPanel: View {
                 .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(appModel.selectedDayEntries) { entry in
-                            EntryRowView(entry: entry)
+                            EntryRowView(entry: entry, presentComposer: presentEntryComposer)
                                 .environment(appModel)
-                            Divider().padding(.leading, 18)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Divider()
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
@@ -106,11 +120,16 @@ struct MenuBarPanel: View {
     private var footer: some View {
         HStack {
             Button {
-                appModel.presentNewTimer()
+                presentNewTimer(newTimerPointerLocation ?? NSEvent.mouseLocation)
             } label: {
                 Label("New timer", systemImage: "plus")
             }
             .buttonStyle(.plain)
+            .onContinuousHover { phase in
+                if case .active = phase {
+                    newTimerPointerLocation = NSEvent.mouseLocation
+                }
+            }
             .disabled(appModel.authenticationState != .signedIn || !appModel.connectivity.isOnline)
             .help(appModel.connectivity.isOnline ? "Start a timer" : "An internet connection is required")
 
