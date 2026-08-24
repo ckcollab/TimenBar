@@ -48,7 +48,7 @@ struct EntryRowView: View {
             } label: {
                 Image(systemName: isRunning ? "pause.circle.fill" : "play.circle")
                     .font(.title2)
-                    .foregroundStyle(isRunning ? TimenBarTheme.accent : .primary)
+                    .foregroundStyle(isRunning ? appModel.timenTheme.accent : .primary)
             }
             .buttonStyle(.plain)
             .padding(.trailing, 16)

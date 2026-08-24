@@ -16,7 +16,7 @@ struct IdlePromptView: View {
             Image(systemName: "moon.zzz.fill")
                 .font(.system(size: 46))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(TimenBarTheme.accent)
+                .foregroundStyle(appModel.timenTheme.accent)
             VStack(spacing: 6) {
                 Text("You’ve been idle")
                     .font(.title2.weight(.semibold))
@@ -32,7 +32,7 @@ struct IdlePromptView: View {
                         dismiss()
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(TimenBarTheme.accent)
+                    .tint(appModel.timenTheme.accent)
                     Button("Delete the entire entry", role: .destructive) {
                         Task { await appModel.resolveIdle(.deleteEntry) }
                         dismiss()
@@ -48,7 +48,7 @@ struct IdlePromptView: View {
                         dismiss()
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(TimenBarTheme.accent)
+                    .tint(appModel.timenTheme.accent)
                     Button("Remove time…") {
                         showRemovalChoices = true
                     }

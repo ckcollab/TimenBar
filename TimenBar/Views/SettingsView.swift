@@ -14,6 +14,7 @@ struct SettingsView: View {
                             SettingsValueRow(label: "Name", value: account.name)
                             SettingsValueRow(label: "Team", value: account.teamName)
                             SettingsValueRow(label: "Time zone", value: account.timeZoneIdentifier)
+                            SettingsValueRow(label: "Theme", value: account.effectiveTheme.displayName)
                             Divider()
                             Button("Disconnect Timen", role: .destructive) {
                                 Task { await appModel.signOut() }
@@ -89,7 +90,7 @@ struct SettingsView: View {
                         Image(systemName: "timer.circle.fill")
                             .font(.system(size: 38))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(TimenBarTheme.accent)
+                            .foregroundStyle(appModel.timenTheme.accent)
 
                         VStack(alignment: .leading, spacing: 7) {
                             Text("TimenBar")

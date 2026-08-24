@@ -70,7 +70,9 @@ struct TimerComposerView: View {
                         Image(systemName: appModel.isFavorite(projectID: draft.projectID) ? "star.fill" : "star")
                             .font(.title2)
                             .foregroundStyle(
-                                appModel.isFavorite(projectID: draft.projectID) ? TimenBarTheme.accent : .secondary
+                                appModel.isFavorite(projectID: draft.projectID)
+                                    ? appModel.timenTheme.accent
+                                    : .secondary
                             )
                             .frame(width: 30, height: 48)
                     }
@@ -149,7 +151,7 @@ struct TimerComposerView: View {
                 }
                 Button(primaryTitle) { performPrimaryAction() }
                     .buttonStyle(.borderedProminent)
-                    .tint(TimenBarTheme.accent)
+                    .tint(appModel.timenTheme.accent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canAttemptSubmit)
             }
@@ -315,7 +317,8 @@ struct TimerComposerView: View {
                 projects: appModel.projects,
                 favoriteProjectIDs: favoriteProjectIDsForPicker,
                 selectedProjectID: $draft.projectID,
-                isPresented: $isProjectPopoverPresented
+                isPresented: $isProjectPopoverPresented,
+                accent: appModel.timenTheme.accent
             )
         }
     }
@@ -337,7 +340,7 @@ struct TimerComposerView: View {
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(TimenBarTheme.accent.opacity(0.13), in: Capsule())
+                                .background(appModel.timenTheme.accentMuted, in: Capsule())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Remove tag \(tag.name)")
@@ -367,7 +370,8 @@ struct TimerComposerView: View {
                 TagTypeaheadPopover(
                     tags: appModel.tags,
                     selectedTagIDs: $draft.tagIDs,
-                    isPresented: $isTagPopoverPresented
+                    isPresented: $isTagPopoverPresented,
+                    accent: appModel.timenTheme.accent
                 )
             }
         }
@@ -567,6 +571,7 @@ private struct ProjectTypeaheadPopover: View {
     let favoriteProjectIDs: Set<String>
     @Binding var selectedProjectID: String?
     @Binding var isPresented: Bool
+    let accent: Color
     @State private var query = ""
     @State private var highlightedID: String?
     @FocusState private var searchIsFocused: Bool
@@ -606,7 +611,7 @@ private struct ProjectTypeaheadPopover: View {
                                 Button { select(choice) } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: choice.systemImage)
-                                            .foregroundStyle(choice.isFavorite ? TimenBarTheme.accent : .secondary)
+                                            .foregroundStyle(choice.isFavorite ? accent : .secondary)
                                             .frame(width: 18)
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(choice.title).lineLimit(1)
@@ -620,14 +625,14 @@ private struct ProjectTypeaheadPopover: View {
                                             (choice.project == nil && selectedProjectID == nil)
                                         {
                                             Image(systemName: "checkmark")
-                                                .foregroundStyle(TimenBarTheme.accent)
+                                                .foregroundStyle(accent)
                                         }
                                     }
                                     .padding(.horizontal, 10)
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                     .background {
                                         RoundedRectangle(cornerRadius: 7)
-                                            .fill(highlightedID == choice.id ? Color.accentColor.opacity(0.14) : .clear)
+                                            .fill(highlightedID == choice.id ? accent.opacity(0.14) : .clear)
                                     }
                                     .contentShape(Rectangle())
                                 }
@@ -729,6 +734,7 @@ private struct TagTypeaheadPopover: View {
     let tags: [TimenTag]
     @Binding var selectedTagIDs: [String]
     @Binding var isPresented: Bool
+    let accent: Color
     @State private var query = ""
     @State private var highlightedID: String?
     @FocusState private var searchIsFocused: Bool
@@ -758,7 +764,7 @@ private struct TagTypeaheadPopover: View {
                                 Button { toggle(tag) } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: selectedTagIDs.contains(tag.id) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(selectedTagIDs.contains(tag.id) ? TimenBarTheme.accent : .secondary)
+                                            .foregroundStyle(selectedTagIDs.contains(tag.id) ? accent : .secondary)
                                         Text(tag.name).lineLimit(1)
                                         Spacer()
                                     }
@@ -766,7 +772,7 @@ private struct TagTypeaheadPopover: View {
                                     .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
                                     .background {
                                         RoundedRectangle(cornerRadius: 7)
-                                            .fill(highlightedID == tag.id ? Color.accentColor.opacity(0.14) : .clear)
+                                            .fill(highlightedID == tag.id ? accent.opacity(0.14) : .clear)
                                     }
                                     .contentShape(Rectangle())
                                 }

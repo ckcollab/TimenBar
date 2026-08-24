@@ -15,7 +15,7 @@ struct FavoritesStrip: View {
                             .font(.caption.weight(.medium))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
-                            .background(TimenBarTheme.accent.opacity(0.12), in: Capsule())
+                            .background(appModel.timenTheme.accentMuted, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .disabled(unavailable)
@@ -27,4 +27,3 @@ struct FavoritesStrip: View {
         }
     }
 }
-

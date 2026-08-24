@@ -9,6 +9,7 @@ struct WeekStripView: View {
     let nextWeek: () -> Void
     let canNavigateNext: Bool
     let navigationDirection: Int?
+    let accent: Color
 
     var body: some View {
         HStack(spacing: 4) {
@@ -33,10 +34,10 @@ struct WeekStripView: View {
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .padding(.vertical, 6)
                         .contentShape(Rectangle())
-                        .foregroundStyle(isSelected(day.date) ? .white : (day.isToday ? TimenBarTheme.accent : .primary))
+                        .foregroundStyle(isSelected(day.date) ? .white : (day.isToday ? accent : .primary))
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(isSelected(day.date) ? TimenBarTheme.accent : .clear)
+                                .fill(isSelected(day.date) ? accent : .clear)
                         }
                     }
                     .buttonStyle(.plain)

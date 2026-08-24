@@ -28,6 +28,7 @@ struct MenuBarPanel: View {
         }
         .frame(width: 448, height: 620)
         .background(TimenBarTheme.panel)
+        .tint(appModel.timenTheme.accent)
         .overlay {
             if appModel.composerMode != nil {
                 Button {
@@ -75,7 +76,7 @@ struct MenuBarPanel: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .frame(height: 54)
-        .background(TimenBarTheme.headerGradient)
+        .background(appModel.timenTheme.headerGradient)
     }
 
     private var signedInContent: some View {
@@ -88,7 +89,8 @@ struct MenuBarPanel: View {
                 previousWeek: { Task { await appModel.navigateWeek(by: -1) } },
                 nextWeek: { Task { await appModel.navigateWeek(by: 1) } },
                 canNavigateNext: appModel.canNavigateToNextWeek,
-                navigationDirection: appModel.weekNavigationDirection
+                navigationDirection: appModel.weekNavigationDirection,
+                accent: appModel.timenTheme.accent
             )
 
             Divider()
@@ -182,7 +184,7 @@ private struct SignedOutView: View {
             Image(systemName: "timer.circle.fill")
                 .font(.system(size: 64))
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, TimenBarTheme.accent)
+                .foregroundStyle(.white, appModel.timenTheme.accent)
             VStack(spacing: 6) {
                 Text("Welcome to TimenBar")
                     .font(.title2.weight(.semibold))
@@ -205,7 +207,7 @@ private struct SignedOutView: View {
                             Task { await appModel.retrySignIn() }
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(TimenBarTheme.accent)
+                        .tint(appModel.timenTheme.accent)
                         .disabled(appModel.isAuthenticationTransitioning)
                         .help("Cancel this attempt and open a new Timen sign-in page")
 
@@ -229,7 +231,7 @@ private struct SignedOutView: View {
                     Text("Connect Timen").frame(width: 130)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(TimenBarTheme.accent)
+                .tint(appModel.timenTheme.accent)
                 .disabled(appModel.isAuthenticationTransitioning)
 
                 Text("Your browser handles email, password, or Google sign-in. TimenBar never sees your password.")

@@ -226,6 +226,27 @@ final class CoreBehaviorTests: XCTestCase {
 
 @MainActor
 final class AppModelAccountIsolationTests: XCTestCase {
+    func testAccountThemeDrivesAppTheme() async throws {
+        let container = try makeContainer()
+        var activeAccount = account(id: "account")
+        activeAccount.theme = .purple
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        XCTAssertEqual(model.timenTheme, .standard)
+
+        await model.signIn()
+
+        XCTAssertEqual(model.timenTheme, .purple)
+    }
+
     func testNewTimerUsesTheSelectedDayAsItsInitialDate() async throws {
         let container = try makeContainer()
         let activeAccount = account(id: "account")

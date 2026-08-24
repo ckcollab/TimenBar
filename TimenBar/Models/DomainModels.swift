@@ -4,6 +4,26 @@ enum SyncState: String, Codable, Sendable {
     case synced
 }
 
+enum TimenTheme: String, Codable, CaseIterable, Sendable {
+    case standard = "default"
+    case blue
+    case purple
+    case orange
+
+    static let fallback: TimenTheme = .standard
+
+    init?(mcpValue: String) {
+        self.init(rawValue: mcpValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    var displayName: String {
+        switch self {
+        case .standard: "Default"
+        default: rawValue.capitalized
+        }
+    }
+}
+
 struct TimenAccount: Codable, Hashable, Sendable {
     var id: String
     var name: String
@@ -11,6 +31,9 @@ struct TimenAccount: Codable, Hashable, Sendable {
     var teamName: String
     var role: String?
     var timeZoneIdentifier: String
+    var theme: TimenTheme? = nil
+
+    var effectiveTheme: TimenTheme { theme ?? .fallback }
 }
 
 struct TimenProject: Codable, Hashable, Identifiable, Sendable {

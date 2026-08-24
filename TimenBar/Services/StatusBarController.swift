@@ -383,6 +383,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             _ = appModel?.quickStartEntry?.id
             _ = appModel?.authenticationState
             _ = appModel?.connectivity.isOnline
+            _ = appModel?.timenTheme
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.refresh()
@@ -408,7 +409,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         let isRunning = appModel.runningTimer != nil
         let isConnected = appModel.authenticationState == .signedIn
         let actionColor = isRunning
-            ? NSColor(srgbRed: 1.0, green: 0.34, blue: 0.0, alpha: 1.0)
+            ? appModel.timenTheme.appKitAccent
             : NSColor(srgbRed: 0.34, green: 0.34, blue: 0.37, alpha: 0.96)
         let durationColor = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 0.96)
 

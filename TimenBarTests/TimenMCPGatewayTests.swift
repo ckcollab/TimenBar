@@ -430,6 +430,55 @@ final class TimenMCPGatewayTests: XCTestCase {
         }
     }
 
+    func testAccountParsesTimenTheme() throws {
+        let response = try fixture(
+            #"{"id":253,"name":"Eric","team_name":"CKC","timezone":"America/Los_Angeles","theme":"purple"}"#
+        )
+
+        let account = try TimenMCPResponseParser.account(from: response)
+
+        XCTAssertEqual(account.theme, .purple)
+        XCTAssertEqual(account.effectiveTheme, .purple)
+    }
+
+    func testAccountParsesDefaultAsDistinctTheme() throws {
+        let response = try fixture(
+            #"{"id":253,"name":"Eric","team_name":"CKC","timezone":"UTC","theme":"default"}"#
+        )
+
+        let account = try TimenMCPResponseParser.account(from: response)
+
+        XCTAssertEqual(account.theme, .standard)
+        XCTAssertEqual(account.effectiveTheme, .standard)
+        XCTAssertEqual(account.effectiveTheme.displayName, "Default")
+    }
+
+    func testMissingOrUnknownAccountThemeDefaultsToBlue() throws {
+        let missing = try TimenMCPResponseParser.account(from: fixture(
+            #"{"id":253,"name":"Eric","team_name":"CKC","timezone":"UTC"}"#
+        ))
+        let unknown = try TimenMCPResponseParser.account(from: fixture(
+            #"{"id":253,"name":"Eric","team_name":"CKC","timezone":"UTC","theme":"midnight"}"#
+        ))
+
+        XCTAssertNil(missing.theme)
+        XCTAssertNil(unknown.theme)
+        XCTAssertEqual(missing.effectiveTheme, .standard)
+        XCTAssertEqual(unknown.effectiveTheme, .standard)
+    }
+
+    func testLegacyCachedAccountWithoutThemeStillDecodes() throws {
+        let data = try XCTUnwrap(
+            #"{"id":"253","name":"Eric","email":null,"teamName":"CKC","role":"owner","timeZoneIdentifier":"UTC"}"#
+                .data(using: .utf8)
+        )
+
+        let account = try JSONDecoder().decode(TimenAccount.self, from: data)
+
+        XCTAssertNil(account.theme)
+        XCTAssertEqual(account.effectiveTheme, .standard)
+    }
+
     func testProjectsRequireStableIDs() throws {
         let response = try fixture(#"{"projects":[{"name":"Internal"}]}"#)
 

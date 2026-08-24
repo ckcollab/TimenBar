@@ -161,6 +161,10 @@ final class AppModel {
         Set(favorites.compactMap(\.projectID))
     }
 
+    var timenTheme: TimenTheme {
+        account?.effectiveTheme ?? .fallback
+    }
+
     var selectedDayEntries: [TimeEntry] {
         let interval = dayInterval(containing: selectedDate)
         var visible = entries.filter { interval.contains($0.start) }

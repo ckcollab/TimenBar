@@ -735,7 +735,9 @@ enum TimenMCPResponseParser {
             teamName: nonEmptyString(in: object, keys: ["team_name", "team", "workspace_name"]) ?? "Timen",
             role: nonEmptyString(in: object, keys: ["role"]),
             timeZoneIdentifier: nonEmptyString(in: object, keys: ["time_zone", "timezone", "timeZone"])
-                ?? TimeZone.current.identifier
+                ?? TimeZone.current.identifier,
+            theme: nonEmptyString(in: object, keys: ["theme"])
+                .flatMap(TimenTheme.init(mcpValue:))
         )
     }
 
