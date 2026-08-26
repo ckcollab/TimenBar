@@ -93,7 +93,7 @@ struct SettingsView: View {
                             .foregroundStyle(appModel.timenTheme.accent)
 
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("TimenBar")
+                            Text(Self.titleWithVersion)
                                 .font(.title3.weight(.semibold))
                             Text("An unofficial, open-source Timen client for macOS.")
                                 .foregroundStyle(.secondary)
@@ -136,6 +136,15 @@ struct SettingsView: View {
             .padding(.vertical, 20)
         }
         .background(TimenBarTheme.panel)
+    }
+
+    private static var titleWithVersion: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              !version.isEmpty
+        else {
+            return "TimenBar"
+        }
+        return "TimenBar v\(version)"
     }
 }
 
