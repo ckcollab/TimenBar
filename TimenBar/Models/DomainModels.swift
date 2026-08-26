@@ -153,18 +153,14 @@ enum TimerDateChange {
         components.second = time.second
         components.nanosecond = time.nanosecond
 
-        let shiftedEnd = calendar.date(from: components) ?? referenceEnd
+        // Preserve the exact instant when logging time for today. Rebuilding
+        // from date components can select the wrong occurrence of a repeated
+        // clock time when daylight saving time ends.
+        let shiftedEnd = calendar.isDate(referenceEnd, inSameDayAs: selectedDate)
+            ? referenceEnd
+            : calendar.date(from: components) ?? referenceEnd
         let duration = max(0, duration)
-        let preferredStart = shiftedEnd.addingTimeInterval(-duration)
-        let selectedDayStart = calendar.startOfDay(for: selectedDate)
-
-        // The composer's Date represents the entry's start date. If subtracting
-        // a long duration would move the start into the previous day, anchor the
-        // entry at midnight and let its end move forward instead.
-        guard preferredStart >= selectedDayStart else {
-            return (selectedDayStart, selectedDayStart.addingTimeInterval(duration))
-        }
-        return (preferredStart, shiftedEnd)
+        return (shiftedEnd.addingTimeInterval(-duration), shiftedEnd)
     }
 
     static func shifting(

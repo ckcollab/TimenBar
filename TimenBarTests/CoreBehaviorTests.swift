@@ -47,7 +47,7 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 5_400, accuracy: 0.001)
     }
 
-    func testManualEntryKeepsSelectedStartDateWhenDurationCrossesMidnight() throws {
+    func testManualEntryMovesStartToPreviousDayWhenDurationCrossesMidnight() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
         let currentTime = try XCTUnwrap(calendar.date(from: DateComponents(
@@ -64,10 +64,224 @@ final class CoreBehaviorTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertTrue(calendar.isDate(interval.start, inSameDayAs: selectedDate))
-        XCTAssertEqual(calendar.component(.hour, from: interval.start), 0)
-        XCTAssertEqual(calendar.component(.hour, from: interval.end), 2)
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour], from: interval.start)
+        let endComponents = calendar.dateComponents([.year, .month, .day, .hour], from: interval.end)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 19)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(endComponents.year, 2026)
+        XCTAssertEqual(endComponents.month, 8)
+        XCTAssertEqual(endComponents.day, 20)
+        XCTAssertEqual(endComponents.hour, 1)
         XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 7_200, accuracy: 0.001)
+    }
+
+    func testManualEntryAtTwelveOhOneLogsPreviousHourAcrossMidnight() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 0, minute: 1
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: 3_600,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 20)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(startComponents.minute, 1)
+        XCTAssertEqual(interval.end, now)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 3_600, accuracy: 0.001)
+    }
+
+    func testManualEntryAtExactMidnightMovesStartToPreviousDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let midnight = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 0
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: midnight,
+            duration: 1_800,
+            on: midnight,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 20)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(startComponents.minute, 30)
+        XCTAssertEqual(interval.end, midnight)
+    }
+
+    func testManualEntrySupportsMultiDayDurationWithoutMovingEnd() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 12, minute: 15
+        )))
+        let duration: TimeInterval = 49 * 3_600
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: duration,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 19)
+        XCTAssertEqual(startComponents.hour, 11)
+        XCTAssertEqual(startComponents.minute, 15)
+        XCTAssertEqual(interval.end, now)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), duration, accuracy: 0.001)
+    }
+
+    func testManualEntryUsesAccountTimeZoneWithNonWholeHourOffset() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Kathmandu"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 0, minute: 15
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: 3_600,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 8)
+        XCTAssertEqual(startComponents.day, 20)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(startComponents.minute, 15)
+        XCTAssertEqual(interval.end, now)
+    }
+
+    func testManualEntryCrossesIntoPreviousYear() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2027, month: 1, day: 1, hour: 0, minute: 1
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: 3_600,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2026)
+        XCTAssertEqual(startComponents.month, 12)
+        XCTAssertEqual(startComponents.day, 31)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(startComponents.minute, 1)
+        XCTAssertEqual(interval.end, now)
+    }
+
+    func testManualEntryCrossesOntoLeapDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2028, month: 3, day: 1, hour: 0, minute: 30
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: 3_600,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.year, 2028)
+        XCTAssertEqual(startComponents.month, 2)
+        XCTAssertEqual(startComponents.day, 29)
+        XCTAssertEqual(startComponents.hour, 23)
+        XCTAssertEqual(startComponents.minute, 30)
+        XCTAssertEqual(interval.end, now)
+    }
+
+    func testManualEntryPreservesExactEndAcrossSpringDaylightSavingChange() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let formatter = ISO8601DateFormatter()
+        let now = try XCTUnwrap(formatter.date(from: "2026-03-08T03:30:00-07:00"))
+
+        let interval = TimerDateChange.ending(
+            at: now,
+            duration: 3_600,
+            on: now,
+            calendar: calendar
+        )
+
+        let startComponents = calendar.dateComponents([.hour, .minute], from: interval.start)
+        XCTAssertEqual(startComponents.hour, 1)
+        XCTAssertEqual(startComponents.minute, 30)
+        XCTAssertEqual(interval.end, now)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 3_600, accuracy: 0.001)
+    }
+
+    func testManualEntryNormalizesNonexistentEndTimeOnSelectedSpringForwardDate() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let referenceEnd = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 2, minute: 30
+        )))
+        let springForwardDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 8
+        )))
+
+        let interval = TimerDateChange.ending(
+            at: referenceEnd,
+            duration: 3_600,
+            on: springForwardDate,
+            calendar: calendar
+        )
+
+        let endComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: interval.end)
+        XCTAssertEqual(endComponents.year, 2026)
+        XCTAssertEqual(endComponents.month, 3)
+        XCTAssertEqual(endComponents.day, 8)
+        XCTAssertEqual(endComponents.hour, 3)
+        XCTAssertEqual(endComponents.minute, 30)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 3_600, accuracy: 0.001)
+    }
+
+    func testManualEntryPreservesSecondRepeatedEndTimeAcrossFallDaylightSavingChange() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let formatter = ISO8601DateFormatter()
+        let secondOneThirty = try XCTUnwrap(formatter.date(from: "2026-11-01T01:30:00-08:00"))
+
+        let interval = TimerDateChange.ending(
+            at: secondOneThirty,
+            duration: 3_600,
+            on: secondOneThirty,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(interval.end, secondOneThirty)
+        XCTAssertEqual(interval.end.timeIntervalSince(interval.start), 3_600, accuracy: 0.001)
+        XCTAssertEqual(calendar.component(.hour, from: interval.start), 1)
+        XCTAssertEqual(calendar.component(.hour, from: interval.end), 1)
+        XCTAssertNotEqual(calendar.timeZone.secondsFromGMT(for: interval.start), calendar.timeZone.secondsFromGMT(for: interval.end))
     }
 
     func testTimerDraftsEnforceBillableMutations() {
@@ -467,6 +681,37 @@ final class AppModelAccountIsolationTests: XCTestCase {
         )
         XCTAssertNotNil(model.composerMode)
         XCTAssertEqual(model.errorMessage, "Time entries cannot end in the future.")
+    }
+
+    func testCrossMidnightManualTimeRevealsItsPreviousStartDayAndWeek() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2020, month: 1, day: 6, hour: 0, minute: 1
+        )))
+        let start = end.addingTimeInterval(-3_600)
+
+        await model.signIn()
+        model.selectDay(end)
+        model.presentNewTimer()
+        await model.logTime(start: start, end: end, draft: .empty, source: "timer-composer")
+
+        XCTAssertTrue(calendar.isDate(model.selectedDate, inSameDayAs: start))
+        XCTAssertFalse(calendar.isDate(model.selectedDate, inSameDayAs: end))
+        XCTAssertEqual(model.selectedDayEntries.map(\.start), [start])
+        XCTAssertEqual(model.entries.map(\.start), [start])
+        XCTAssertNil(model.composerMode)
     }
 
     func testContinuedEntryKeepsItsBaseDurationOutsideTheVisibleWeek() async throws {

@@ -585,6 +585,7 @@ final class AppModel {
             entries.append(logged)
             if let remoteID = logged.remoteID { focus(on: remoteID) }
             try? store.upsertEntries([logged])
+            revealLoggedEntryIfNeeded(logged, source: source)
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             errorMessage = error.localizedDescription
@@ -1138,6 +1139,27 @@ final class AppModel {
     private func dayInterval(containing date: Date) -> DateInterval {
         accountCalendar.dateInterval(of: .day, for: date)
             ?? DateInterval(start: accountCalendar.startOfDay(for: date), duration: 86_400)
+    }
+
+    private func revealLoggedEntryIfNeeded(_ logged: TimeEntry, source: String) {
+        guard source == "timer-composer" else { return }
+        let calendar = accountCalendar
+        guard !calendar.isDate(selectedDate, inSameDayAs: logged.start) else { return }
+
+        let visibleWeek = weekInterval(containing: selectedDate)
+        let loggedWeek = weekInterval(containing: logged.start)
+        selectedDate = logged.start
+
+        // Crossing midnight at the start of a week moves the entry into the
+        // previous week. Use that week's cache so the saved entry is visible
+        // immediately without adding another network mutation round trip.
+        guard !visibleWeek.contains(logged.start) else { return }
+        var cached = (try? store.entries(from: loggedWeek.start, to: loggedWeek.end)) ?? []
+        cached.removeAll {
+            $0.id == logged.id || ($0.remoteID != nil && $0.remoteID == logged.remoteID)
+        }
+        cached.append(logged)
+        entries = cached
     }
 
     private func rememberMostRecentTimer(from entries: [TimeEntry]) {
