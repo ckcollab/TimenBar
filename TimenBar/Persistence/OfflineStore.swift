@@ -260,16 +260,6 @@ final class OfflineStore {
         try context.save()
     }
 
-    func closeActiveSegment(at date: Date) throws -> ActiveTimerSegment? {
-        try requireAccountBinding()
-        var descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
-        descriptor.fetchLimit = 1
-        guard let record = try context.fetch(descriptor).first else { return nil }
-        record.endedAt = date
-        try context.save()
-        return record.domain
-    }
-
     func discardActiveSegment() throws {
         try requireAccountBinding()
         let descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })

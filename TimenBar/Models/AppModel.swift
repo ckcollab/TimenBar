@@ -475,7 +475,7 @@ final class AppModel {
             return
         }
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to continue an entry."
+            reportUnsavedMutation()
             return
         }
         guard let mutationAccountID = account?.id else { return }
@@ -522,7 +522,7 @@ final class AppModel {
         let draft = draft.enforcingBillable
         actionLogger.debug("start-timer source=\(source, privacy: .public) project=\(draft.projectID ?? "unassigned", privacy: .public)")
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to start a timer."
+            reportUnsavedMutation()
             return
         }
         guard let mutationAccountID = account?.id else { return }
@@ -554,7 +554,7 @@ final class AppModel {
             configureIdleMonitor()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
-            errorMessage = error.localizedDescription
+            reportUnsavedMutation(error)
         }
     }
 
@@ -562,7 +562,7 @@ final class AppModel {
         let draft = draft.enforcingBillable
         actionLogger.debug("log-time source=\(source, privacy: .public) project=\(draft.projectID ?? "unassigned", privacy: .public)")
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to save time."
+            reportUnsavedMutation()
             return
         }
         guard end > start else {
@@ -594,14 +594,14 @@ final class AppModel {
             revealLoggedEntryIfNeeded(logged, source: source)
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
-            errorMessage = error.localizedDescription
+            reportUnsavedMutation(error)
         }
     }
 
     func quickToggleTimer(source: String = "status-bar") async {
         actionLogger.debug("quick-toggle source=\(source, privacy: .public) running=\(self.runningTimer != nil, privacy: .public)")
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to change timers."
+            reportUnsavedMutation()
             return
         }
         if runningTimer != nil {
@@ -617,7 +617,7 @@ final class AppModel {
         actionLogger.debug("stop-timer source=\(source, privacy: .public) timer=\(self.runningTimer?.remoteID ?? "none", privacy: .public)")
         guard let timer = runningTimer else { return }
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to stop a timer."
+            reportUnsavedMutation()
             return
         }
         guard let mutationAccountID = account?.id else { return }
@@ -670,7 +670,7 @@ final class AppModel {
             resumedEntryID = nil
             idlePrompt = nil
             idleMonitor.stop()
-            _ = try? store.closeActiveSegment(at: desiredEnd)
+            try? store.discardActiveSegment()
             entries.removeAll { $0.id == timer.id || $0.remoteID == remote.remoteID }
             entries.append(remote)
             if let remoteID = remote.remoteID { focus(on: remoteID) }
@@ -679,7 +679,7 @@ final class AppModel {
             dismissRunningComposerIfNeeded()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
-            errorMessage = error.localizedDescription
+            reportUnsavedMutation(error)
             configureIdleMonitor()
         }
     }
@@ -687,7 +687,7 @@ final class AppModel {
     func updateRunningTimer(_ draft: TimerDraft) {
         let draft = draft.enforcingBillable
         guard connectivity.isOnline else {
-            errorMessage = "TimenBar must be online to edit a running timer."
+            reportUnsavedMutation()
             return
         }
         guard var timer = runningTimer else { return }
@@ -716,7 +716,7 @@ final class AppModel {
     func updateEntry(_ entry: TimeEntry, draft: TimerDraft, start: Date?, end: Date?) async {
         let draft = draft.enforcingBillable
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to edit entries."
+            reportUnsavedMutation()
             return
         }
         if let start, let end, end <= start {
@@ -751,13 +751,13 @@ final class AppModel {
             try? store.upsertEntries([updated])
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
-            errorMessage = error.localizedDescription
+            reportUnsavedMutation(error)
         }
     }
 
     func deleteEntry(_ entry: TimeEntry) async {
         guard authenticationState == .signedIn, connectivity.isOnline else {
-            errorMessage = "TimenBar must be online and connected to delete entries."
+            reportUnsavedMutation()
             return
         }
         guard let mutationAccountID = account?.id else { return }
@@ -782,7 +782,7 @@ final class AppModel {
             try? store.deleteEntry(id: entry.id)
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
-            errorMessage = error.localizedDescription
+            reportUnsavedMutation(error)
         }
     }
 
@@ -886,6 +886,8 @@ final class AppModel {
             while !Task.isCancelled {
                 guard let self else { return }
                 now = .now
+                // Reconnect only refreshes the read cache. Timer writes are never
+                // queued or replayed while offline.
                 if connectivity.isOnline, !lastKnownOnline, authenticationState == .signedIn {
                     do { try await refreshAll() }
                     catch { errorMessage = error.localizedDescription }
@@ -916,6 +918,22 @@ final class AppModel {
 
     private func isMutationContextCurrent(_ accountID: String) -> Bool {
         authenticationState == .signedIn && account?.id == accountID
+    }
+
+    private func reportUnsavedMutation(_ error: Error? = nil) {
+        if let error, connectivity.isOnline {
+            if case TimenBarError.networkUnavailable = error {
+                errorMessage = TimenBarError.unsavedMutationMessage
+                return
+            }
+            if (error as NSError).domain == NSURLErrorDomain {
+                errorMessage = TimenBarError.unsavedMutationMessage
+                return
+            }
+            errorMessage = error.localizedDescription
+            return
+        }
+        errorMessage = TimenBarError.unsavedMutationMessage
     }
 
     private func presentComposer(_ mode: TimerComposerMode, for accountID: String) {

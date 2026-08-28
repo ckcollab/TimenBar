@@ -231,6 +231,8 @@ enum IdleResolution: Sendable {
 }
 
 enum TimenBarError: LocalizedError, Sendable {
+    static let unsavedMutationMessage = "Unable to update times."
+
     case notAuthenticated
     case incompatibleServer(missingTools: [String])
     case networkUnavailable
@@ -242,7 +244,7 @@ enum TimenBarError: LocalizedError, Sendable {
         switch self {
         case .notAuthenticated: "Sign in to Timen first."
         case let .incompatibleServer(tools): "Timen is missing required tools: \(tools.joined(separator: ", "))."
-        case .networkUnavailable: "Timen is currently unreachable. Check your connection and try again."
+        case .networkUnavailable: Self.unsavedMutationMessage
         case let .invalidResponse(message): "Timen returned an unexpected response: \(message)"
         case let .oauth(message): "Sign-in failed: \(message)"
         case let .conflict(message): "Timen rejected the change: \(message)"

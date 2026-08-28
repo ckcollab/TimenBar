@@ -461,6 +461,41 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(model.timenTheme, .purple)
     }
 
+    func testOfflineTimerMutationsAreRejectedWithoutContactingTimen() async throws {
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [TimenProject(id: "p", name: "Project", clientName: nil)],
+            tags: [],
+            entries: []
+        )
+        let model = makeModel(
+            container: try makeContainer(),
+            gateway: gateway,
+            defaults: defaults,
+            connectivity: ConnectivityMonitor(initiallyOnline: false, startMonitoring: false)
+        )
+        model.authenticationState = .signedIn
+        model.account = account(id: "account")
+        model.projects = [TimenProject(id: "p", name: "Project", clientName: nil)]
+
+        await model.startTimer(
+            TimerDraft(projectID: "p", tagIDs: [], note: "", billable: true),
+            source: "status-bar"
+        )
+        XCTAssertEqual(model.errorMessage, TimenBarError.unsavedMutationMessage)
+        XCTAssertEqual(await gateway.startTimerCallCount(), 0)
+
+        await model.logTime(
+            start: Date(timeIntervalSince1970: 1_000),
+            end: Date(timeIntervalSince1970: 1_600),
+            draft: TimerDraft(projectID: "p", tagIDs: [], note: "", billable: true)
+        )
+        XCTAssertEqual(await gateway.logTimeCallCount(), 0)
+        XCTAssertTrue(model.entries.isEmpty)
+    }
+
     func testStatusBarShowsTodaysLastTimerDuration() throws {
         let model = try makeIsolatedModel()
         var calendar = Calendar(identifier: .gregorian)
@@ -1213,13 +1248,14 @@ final class AppModelAccountIsolationTests: XCTestCase {
     private func makeModel(
         container: ModelContainer,
         gateway: AccountLifecycleGateway,
-        defaults: UserDefaults
+        defaults: UserDefaults,
+        connectivity: ConnectivityMonitor? = nil
     ) -> AppModel {
         AppModel(
             container: container,
             gateway: gateway,
             settings: AppSettings(defaults: defaults),
-            connectivity: ConnectivityMonitor(initiallyOnline: true, startMonitoring: false),
+            connectivity: connectivity ?? ConnectivityMonitor(initiallyOnline: true, startMonitoring: false),
             defaults: defaults,
             startAutomatically: false
         )

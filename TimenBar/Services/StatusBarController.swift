@@ -423,7 +423,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         actionButton.segmentColor = .clear
         actionButton.toolTip = !isConnected
             ? "Open TimenBar to connect Timen"
-            : (!appModel.connectivity.isOnline ? "TimenBar must be online to change timers"
+            : (!appModel.connectivity.isOnline ? TimenBarError.unsavedMutationMessage
             : (isRunning ? "Stop the current timer" : "Start the most recent timer")
               )
         actionButton.setAccessibilityLabel(isRunning ? "Stop current timer" : "Start current timer")

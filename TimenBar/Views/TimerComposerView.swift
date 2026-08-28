@@ -111,7 +111,7 @@ struct TimerComposerView: View {
                 }
 
                 if !appModel.connectivity.isOnline {
-                    Label("Connect to the internet to save timer changes.", systemImage: "wifi.slash")
+                    Label(TimenBarError.unsavedMutationMessage, systemImage: "wifi.slash")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

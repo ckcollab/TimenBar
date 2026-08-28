@@ -93,6 +93,16 @@ struct MenuBarPanel: View {
                 accent: appModel.timenTheme.accent
             )
 
+            if !appModel.connectivity.isOnline {
+                Label("OFFLINE: Unable to update times", systemImage: "wifi.slash")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(Color.red)
+            }
+
             Divider()
 
             if appModel.selectedDayEntries.isEmpty {
@@ -133,7 +143,7 @@ struct MenuBarPanel: View {
                 }
             }
             .disabled(appModel.authenticationState != .signedIn || !appModel.connectivity.isOnline)
-            .help(appModel.connectivity.isOnline ? "Start a timer" : "An internet connection is required")
+            .help(appModel.connectivity.isOnline ? "Start a timer" : TimenBarError.unsavedMutationMessage)
 
             Spacer()
 
