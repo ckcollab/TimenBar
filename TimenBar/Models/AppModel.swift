@@ -112,7 +112,13 @@ final class AppModel {
     var statusBarDurationText: String {
         guard settings.showElapsedInMenuBar else { return "TimenBar" }
         if runningTimer != nil { return runningDisplayDuration.timerText }
-        return quickStartEntry?.duration.timerText ?? "0:00"
+        // Harvest-style: a stopped timer from a previous account-local day is not
+        // today's timer, so the menu bar waits at 0:00 until one is started.
+        guard let entry = quickStartEntry else { return "0:00" }
+        let calendar = accountCalendar
+        let belongsToToday = calendar.isDate(entry.start, inSameDayAs: now)
+            || calendar.isDate(entry.end ?? entry.start, inSameDayAs: now)
+        return belongsToToday ? entry.duration.timerText : "0:00"
     }
 
     var runningDisplayDuration: TimeInterval {

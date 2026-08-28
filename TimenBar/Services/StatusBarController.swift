@@ -45,7 +45,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         popover.contentViewController = NSHostingController(rootView: panel)
         popover.contentSize = NSSize(width: 448, height: 620)
         popover.behavior = .transient
-        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        popover.animates = false
         popover.delegate = self
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in

@@ -461,6 +461,167 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(model.timenTheme, .purple)
     }
 
+    func testStatusBarShowsTodaysLastTimerDuration() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 9
+        )))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 10, minute: 30
+        )))
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 11
+        )))
+        model.account = account(id: "account")
+        model.entries = [entry(
+            id: "today",
+            project: TimenProject(id: "p", name: "Project", clientName: nil),
+            note: "Today",
+            start: start,
+            end: end
+        )]
+
+        XCTAssertEqual(model.statusBarDurationText, "1:30")
+    }
+
+    func testStatusBarHidesPreviousDayTimerDuration() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 14
+        )))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 16
+        )))
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 9
+        )))
+        model.account = account(id: "account")
+        model.entries = [entry(
+            id: "yesterday",
+            project: TimenProject(id: "p", name: "Project", clientName: nil),
+            note: "Yesterday",
+            start: start,
+            end: end
+        )]
+
+        XCTAssertEqual(model.quickStartEntry?.remoteID, "yesterday")
+        XCTAssertEqual(model.statusBarDurationText, "0:00")
+    }
+
+    func testStatusBarResetsWhenNowCrossesMidnight() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 22
+        )))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 23, minute: 30
+        )))
+        model.account = account(id: "account")
+        model.entries = [entry(
+            id: "evening",
+            project: TimenProject(id: "p", name: "Project", clientName: nil),
+            note: "Evening",
+            start: start,
+            end: end
+        )]
+
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 23, minute: 45
+        )))
+        XCTAssertEqual(model.statusBarDurationText, "1:30")
+
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 0, minute: 1
+        )))
+        XCTAssertEqual(model.statusBarDurationText, "0:00")
+    }
+
+    func testStatusBarKeepsRunningTimerStartedOnAPreviousDay() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let startedAt = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 23
+        )))
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 1
+        )))
+        model.account = account(id: "account")
+        model.runningTimer = RunningTimer(
+            id: "running",
+            remoteID: "running",
+            startedAt: startedAt,
+            projectID: "p",
+            projectName: "Project",
+            clientName: nil,
+            note: "",
+            tags: [],
+            billable: true,
+            syncState: .synced
+        )
+
+        XCTAssertEqual(model.statusBarDurationText, "2:00")
+    }
+
+    func testStatusBarShowsTimerThatRanPastMidnight() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 23
+        )))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 1
+        )))
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 9
+        )))
+        model.account = account(id: "account")
+        model.entries = [entry(
+            id: "overnight",
+            project: TimenProject(id: "p", name: "Project", clientName: nil),
+            note: "Overnight",
+            start: start,
+            end: end
+        )]
+
+        XCTAssertEqual(model.statusBarDurationText, "2:00")
+    }
+
+    func testStatusBarUsesAccountTimeZoneForTheNewDay() throws {
+        let model = try makeIsolatedModel()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        // 00:30 PDT on Aug 21 is 07:30 UTC. The last timer ended at 23:00 PDT
+        // (06:00 UTC), which is still Aug 21 in UTC and would keep showing if the
+        // menu bar used UTC instead of the account time zone.
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 22
+        )))
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 20, hour: 23
+        )))
+        model.now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 21, hour: 0, minute: 30
+        )))
+        model.account = account(id: "account", timeZoneIdentifier: "America/Los_Angeles")
+        model.entries = [entry(
+            id: "evening",
+            project: TimenProject(id: "p", name: "Project", clientName: nil),
+            note: "Evening",
+            start: start,
+            end: end
+        )]
+
+        XCTAssertEqual(model.statusBarDurationText, "0:00")
+    }
+
     func testNewTimerUsesTheSelectedDayAsItsInitialDate() async throws {
         let container = try makeContainer()
         let activeAccount = account(id: "account")
@@ -1064,6 +1225,23 @@ final class AppModelAccountIsolationTests: XCTestCase {
         )
     }
 
+    private func makeIsolatedModel() throws -> AppModel {
+        let defaults = makeDefaults()
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: self.defaultsSuiteName(defaults))
+        }
+        return makeModel(
+            container: try makeContainer(),
+            gateway: AccountLifecycleGateway(
+                account: account(id: "account"),
+                projects: [],
+                tags: [],
+                entries: []
+            ),
+            defaults: defaults
+        )
+    }
+
     private func makeDefaults() -> UserDefaults {
         let name = "AppModelAccountIsolationTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -1128,19 +1306,25 @@ final class AppModelAccountIsolationTests: XCTestCase {
         )), forKey: "lastTimerDraft")
     }
 
-    private func account(id: String) -> TimenAccount {
+    private func account(id: String, timeZoneIdentifier: String = "UTC") -> TimenAccount {
         TimenAccount(
             id: id, name: id, email: "\(id)@example.com", teamName: "Team \(id)",
-            role: "member", timeZoneIdentifier: "UTC"
+            role: "member", timeZoneIdentifier: timeZoneIdentifier
         )
     }
 
-    private func entry(id: String, project: TimenProject, note: String) -> TimeEntry {
+    private func entry(
+        id: String,
+        project: TimenProject,
+        note: String,
+        start: Date = .now.addingTimeInterval(-600),
+        end: Date? = nil
+    ) -> TimeEntry {
         TimeEntry(
             id: id,
             remoteID: id,
-            start: .now.addingTimeInterval(-600),
-            end: .now,
+            start: start,
+            end: end ?? start.addingTimeInterval(600),
             projectID: project.id,
             projectName: project.name,
             clientName: project.clientName,
