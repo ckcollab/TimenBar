@@ -12,6 +12,8 @@ final class OAuthSessionTests: XCTestCase {
         XCTAssertTrue(html.contains("id=\"logo-gradient\""))
         XCTAssertTrue(html.contains("prefers-color-scheme: dark"))
         XCTAssertTrue(html.contains("<main aria-labelledby=\"title\">"))
+        XCTAssertTrue(html.contains("rel=\"icon\""))
+        XCTAssertTrue(html.contains("data:image/svg+xml"))
         XCTAssertFalse(html.contains("<script"))
         XCTAssertFalse(html.contains("src=\"http"))
         XCTAssertFalse(html.contains("href=\"http"))

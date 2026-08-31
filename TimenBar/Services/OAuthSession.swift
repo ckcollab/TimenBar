@@ -79,6 +79,7 @@ enum OAuthCallbackPage {
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <meta name="color-scheme" content="light dark">
       <title>TimenBar authorization received</title>
+      <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='128' y1='96' x2='896' y2='928' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%23FF8B3D'/%3E%3Cstop offset='1' stop-color='%23E43E55'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='48' y='48' width='928' height='928' rx='224' fill='url(%23bg)'/%3E%3Ccircle cx='512' cy='512' r='298' fill='%23FFF' fill-opacity='.14'/%3E%3Cpath d='M363 292h298M363 732h298' fill='none' stroke='%23FFF' stroke-width='58' stroke-linecap='round'/%3E%3Cpath d='M398 323c0 105 46 137 114 189-68 52-114 84-114 189h228c0-105-46-137-114-189 68-52 114-84 114-189H398Z' fill='%23FFF'/%3E%3Cpath d='M454 374h116c-8 44-28 65-58 90-30-25-50-46-58-90Zm58 184c33 26 56 51 62 91H450c6-40 29-65 62-91Z' fill='%23EF5260'/%3E%3C/svg%3E">
       <style>
         :root {
           color-scheme: light dark;
