@@ -549,7 +549,7 @@
 				CODE_SIGN_ENTITLEMENTS = TimenBar/TimenBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = MMJZRMH2BA;
 				ENABLE_APP_SANDBOX = YES;
@@ -561,7 +561,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 TimenBar contributors";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.8;
+				MARKETING_VERSION = 0.1.9;
 				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBar;
 				PRODUCT_NAME = TimenBar;
 				SDKROOT = macosx;
@@ -646,7 +646,7 @@
 				CODE_SIGN_ENTITLEMENTS = TimenBar/TimenBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = MMJZRMH2BA;
 				ENABLE_APP_SANDBOX = YES;
@@ -658,7 +658,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 TimenBar contributors";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.8;
+				MARKETING_VERSION = 0.1.9;
 				PRODUCT_BUNDLE_IDENTIFIER = app.timenbar.TimenBar;
 				PRODUCT_NAME = TimenBar;
 				SDKROOT = macosx;
