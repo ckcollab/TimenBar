@@ -130,6 +130,7 @@ restore_version_files() {
   [[ -n "$backup_dir" && -d "$backup_dir" ]] || return 0
   cp "$backup_dir/project.pbxproj" "$project_file"
   cp "$backup_dir/generate_project.rb" "$generator_file"
+  [[ -f "$backup_dir/appcast.xml" ]] && cp "$backup_dir/appcast.xml" "$root_dir/docs/appcast.xml"
 }
 
 handle_exit() {
@@ -148,7 +149,7 @@ trap handle_exit EXIT
 
 cd "$root_dir"
 
-for tool in git ruby xcodebuild xcrun codesign ditto shasum security grep; do
+for tool in git ruby xcodebuild xcrun codesign ditto shasum security grep curl; do
   require_command "$tool"
 done
 
@@ -183,8 +184,16 @@ current_build="$(
 
 [[ -n "$current_version" && "$current_version" != *$'\n'* ]] || \
   die "the Xcode project must contain one consistent marketing version"
+[[ -n "$current_build" && "$current_build" != *$'\n'* ]] || \
+  die "the Xcode project must contain one consistent integer build number"
 [[ "$current_build" =~ '^[0-9]+$' ]] || \
   die "the Xcode project must contain one consistent integer build number"
+
+sparkle_public_key="$(
+  sed -n 's/^[[:space:]]*INFOPLIST_KEY_SUPublicEDKey = "\([^"]*\)";/\1/p' "$project_file" | sort -u
+)"
+[[ -n "$sparkle_public_key" && "$sparkle_public_key" != *$'\n'* ]] || \
+  die "run scripts/setup-sparkle-keys.sh before releasing so SUPublicEDKey is set"
 /usr/bin/ruby -e '
   require "rubygems"
   exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)
@@ -209,6 +218,7 @@ backup_dir="$release_dir/source-backup"
 mkdir -p "$backup_dir"
 cp "$project_file" "$backup_dir/project.pbxproj"
 cp "$generator_file" "$backup_dir/generate_project.rb"
+cp "$root_dir/docs/appcast.xml" "$backup_dir/appcast.xml"
 
 next_build=$((current_build + 1))
 
@@ -332,6 +342,21 @@ ditto -c -k --sequesterRsrc --keepParent "$export_app" "$zip_path"
   shasum -a 256 "$zip_name" > "$zip_name.sha256"
 )
 
+if ! $prepare_only; then
+  source "$root_dir/scripts/sparkle.sh"
+  ensure_sparkle_tools
+  print "Signing update for Sparkle..."
+  signature="$("$SPARKLE_BIN/sign_update" --account "$SPARKLE_ACCOUNT" "$zip_path")"
+  /usr/bin/ruby "$root_dir/scripts/update-appcast.rb" \
+    "$root_dir/docs/appcast.xml" \
+    "$version" \
+    "$next_build" \
+    "$tag" \
+    "${SPARKLE_DOWNLOAD_PREFIX}/${tag}/${zip_name}" \
+    "$signature" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
 if $prepare_only; then
   restore_version_files
   backup_dir=""
@@ -342,7 +367,7 @@ if $prepare_only; then
   exit 0
 fi
 
-git add "$project_file" "$generator_file"
+git add "$project_file" "$generator_file" "$root_dir/docs/appcast.xml"
 git commit -m "Release $tag"
 source_changes_committed=true
 git tag -a "$tag" -m "TimenBar $version"

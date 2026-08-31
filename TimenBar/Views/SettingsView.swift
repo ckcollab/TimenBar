@@ -106,7 +106,7 @@ struct SettingsView: View {
                             HStack(spacing: 14) {
                                 Link(
                                     "Source code",
-                                    destination: URL(string: "https://github.com/timenbar/timenbar")!
+                                    destination: URL(string: "https://github.com/ckcollab/TimenBar")!
                                 )
                                 Text("MIT License")
                                     .foregroundStyle(.secondary)

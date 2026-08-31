@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="TimenBar is an unofficial native macOS menu-bar client for Timen.">
+  <title>TimenBar</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --canvas: #f5f5f7;
+      --card: rgba(255, 255, 255, .88);
+      --text: #19191d;
+      --secondary: #65656d;
+      --border: rgba(25, 25, 29, .10);
+      --rule: rgba(25, 25, 29, .09);
+      --pill: rgba(228, 62, 85, .10);
+      --pill-text: #b92c42;
+      --shadow: 0 24px 70px rgba(69, 31, 39, .16);
+      --button: #e43e55;
+      --button-text: #fff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --canvas: #16161a;
+        --card: rgba(35, 35, 40, .92);
+        --text: #fafafd;
+        --secondary: #aaaab2;
+        --border: rgba(255, 255, 255, .10);
+        --rule: rgba(255, 255, 255, .08);
+        --pill: rgba(239, 82, 96, .14);
+        --pill-text: #ff8993;
+        --shadow: 0 28px 80px rgba(0, 0, 0, .40);
+        --button: #ef5260;
+        --button-text: #fff;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+      background:
+        radial-gradient(circle at 50% -12%, rgba(255, 139, 61, .22), transparent 42%),
+        radial-gradient(circle at 100% 100%, rgba(228, 62, 85, .10), transparent 38%),
+        var(--canvas);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      width: min(100%, 448px);
+      padding: 44px 42px 38px;
+      text-align: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .logo {
+      display: block;
+      width: 92px;
+      height: 92px;
+      margin: 0 auto 24px;
+      filter: drop-shadow(0 12px 22px rgba(116, 34, 57, .22));
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 11px;
+      color: var(--pill-text);
+      background: var(--pill);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+
+    h1 {
+      margin: 17px 0 10px;
+      font-size: clamp(28px, 7vw, 33px);
+      font-weight: 700;
+      letter-spacing: -.035em;
+      line-height: 1.12;
+    }
+
+    p {
+      max-width: 34ch;
+      margin: 0 auto;
+      color: var(--secondary);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    .actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #ff8b3d, #e43e55);
+      color: var(--button-text);
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -.01em;
+      text-decoration: none;
+    }
+
+    .button:hover {
+      filter: brightness(1.05);
+    }
+
+    .hint {
+      margin-top: 26px;
+      padding-top: 22px;
+      border-top: 1px solid var(--rule);
+      font-size: 14px;
+    }
+
+    .hint a {
+      color: var(--pill-text);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .hint a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 18px; }
+      main { padding: 36px 24px 30px; border-radius: 23px; }
+      .logo { width: 82px; height: 82px; }
+    }
+  </style>
+</head>
+<body>
+  <main aria-labelledby="title">
+    <svg class="logo" aria-hidden="true" focusable="false" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="logo-gradient" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#FF8B3D"/>
+          <stop offset="1" stop-color="#E43E55"/>
+        </linearGradient>
+        <filter id="logo-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#742239" flood-opacity=".32"/>
+        </filter>
+      </defs>
+      <rect x="48" y="48" width="928" height="928" rx="224" fill="url(#logo-gradient)"/>
+      <circle cx="512" cy="512" r="298" fill="#FFF" fill-opacity=".14"/>
+      <path d="M363 292h298M363 732h298" fill="none" stroke="#FFF" stroke-width="58" stroke-linecap="round"/>
+      <path d="M398 323c0 105 46 137 114 189-68 52-114 84-114 189h228c0-105-46-137-114-189 68-52 114-84 114-189H398Z" fill="#FFF" filter="url(#logo-shadow)"/>
+      <path d="M454 374h116c-8 44-28 65-58 90-30-25-50-46-58-90Zm58 184c33 26 56 51 62 91H450c6-40 29-65 62-91Z" fill="#EF5260"/>
+    </svg>
+    <div class="status">Unofficial Timen client</div>
+    <h1 id="title">TimenBar</h1>
+    <p>A native macOS menu-bar app for tracking time with Timen.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/ckcollab/TimenBar/releases/latest">Download for Mac</a>
+    </div>
+    <p class="hint">
+      <a href="https://github.com/ckcollab/TimenBar">Source on GitHub</a>
+      · MIT License
+    </p>
+  </main>
+</body>
+</html>

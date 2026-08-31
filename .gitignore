@@ -1,5 +1,8 @@
 .DS_Store
 .env
+.sparkle/
+sparkle_private_key
+*.pem
 DerivedData/
 .derivedData/
 .derivedData*/
@@ -9,9 +12,16 @@ DerivedData/
 .modulecache-*/
 .cache/
 .build/
+.swiftpm/
 build/
 xcuserdata/
 *.xcuserstate
+*.xcresult
+*.hmap
+*.dSYM
+*.dSYM.zip
+timeline.xctimeline
+playground.xcworkspace
 *.ipa
 *.dmg
 *.zip
