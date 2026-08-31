@@ -2,7 +2,7 @@
 <rss version='2.0' xmlns:sparkle='http://www.andymatuschak.org/xml-namespaces/sparkle' xmlns:dc='http://purl.org/dc/elements/1.1/'>
   <channel>
     <title>TimenBar</title>
-    <link>https://ckcollab.github.io/TimenBar/appcast.xml</link>
+    <link>https://timenbar.ckcollab.com/appcast.xml</link>
     <description>TimenBar updates</description>
     <language>en</language>
     <item>

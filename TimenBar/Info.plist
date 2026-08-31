@@ -5,7 +5,7 @@
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://ckcollab.github.io/TimenBar/appcast.xml</string>
+	<string>https://timenbar.ckcollab.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>3TpkYSv1lokJc0eHTYxw3nJDkfg1+/utFapErzWlDDE=</string>
 </dict>

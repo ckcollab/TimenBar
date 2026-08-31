@@ -3,7 +3,7 @@
 
 SPARKLE_VERSION="2.9.2"
 SPARKLE_ACCOUNT="timenbar"
-SPARKLE_FEED_URL="https://ckcollab.github.io/TimenBar/appcast.xml"
+SPARKLE_FEED_URL="https://timenbar.ckcollab.com/appcast.xml"
 SPARKLE_DOWNLOAD_PREFIX="https://github.com/ckcollab/TimenBar/releases/download"
 SPARKLE_ARCHIVE_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
 

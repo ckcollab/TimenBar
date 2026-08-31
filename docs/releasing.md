@@ -17,7 +17,7 @@ scripts/setup-sparkle-keys.sh
 
 `scripts/setup-sparkle-keys.sh` stores the Sparkle **private** key in the login Keychain under the `timenbar` account and writes only the **public** key into `TimenBar/Info.plist`. Never export that private key into the repo, `.env`, or chat. Custom Sparkle keys must live in that plist; `INFOPLIST_KEY_SU*` build settings are dropped from the generated Info.plist.
 
-The Sparkle feed is `https://ckcollab.github.io/TimenBar/appcast.xml`, served from `docs/appcast.xml` on GitHub Pages (`/docs` on `master`). Enable Pages once:
+The Sparkle feed is `https://timenbar.ckcollab.com/appcast.xml`, served from `docs/appcast.xml` on GitHub Pages (`/docs` on `master`). Enable Pages once:
 
 ```sh
 gh api repos/ckcollab/TimenBar/pages -X POST --input - <<'EOF'
