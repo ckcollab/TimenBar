@@ -190,7 +190,7 @@ actor TimenMCPGateway: TimenGateway {
 
     func updateEntry(id: String, draft: TimerDraft, start: Date?, end: Date?) async throws -> TimeEntry {
         var additionalValues = [
-            SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
+            SemanticArgument(names: ["id", "time_entry_id", "entry_id"], value: Self.identifierValue(id)),
         ]
         additionalValues += TimenMCPUpdateTiming.arguments(start: start, end: end)
         let arguments = try draftArguments(
@@ -208,7 +208,7 @@ actor TimenMCPGateway: TimenGateway {
 
     func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry {
         let arguments = try draftArguments(draft, tool: "timen_update_time_entry", additionalValues: [
-            SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
+            SemanticArgument(names: ["id", "time_entry_id", "entry_id"], value: Self.identifierValue(id)),
             TimenMCPUpdateTiming.durationArgument(duration),
         ])
         try TimenMCPUpdateTiming.validateDurationEmission(in: arguments)
@@ -226,7 +226,7 @@ actor TimenMCPGateway: TimenGateway {
         let result = try await performCall(
             "timen_delete_time_entry",
             arguments: arguments(for: "timen_delete_time_entry", values: [
-                SemanticArgument(names: ["time_entry_id", "entry_id", "id"], value: Self.identifierValue(id)),
+                SemanticArgument(names: ["id", "time_entry_id", "entry_id"], value: Self.identifierValue(id)),
                 SemanticArgument(names: ["confirm"], value: .bool(true)),
             ])
         )
@@ -515,16 +515,22 @@ enum TimenMCPEntryScope {
 
 enum TimenMCPArgumentBuilder {
     static func arguments(schema: Value?, values: [SemanticArgument]) -> [String: Value] {
+        let schemaObject = schema?.objectValue
         let propertyNames: Set<String>
-        if let keys = schema?.objectValue?["properties"]?.objectValue?.keys {
+        if let keys = schemaObject?["properties"]?.objectValue?.keys {
             propertyNames = Set(keys)
         } else {
             propertyNames = []
         }
+        // Timen sometimes advertises `time_entry_id` while still requiring `id`.
+        // Honor both advertised properties and the schema's required names.
+        let requiredNames = Set(schemaObject?["required"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         return values.reduce(into: [:]) { output, semantic in
-            let key = semantic.names.first(where: propertyNames.contains)
-                ?? (propertyNames.isEmpty ? semantic.names.first : nil)
-            if let key {
+            var keys = semantic.names.filter { propertyNames.contains($0) || requiredNames.contains($0) }
+            if keys.isEmpty, propertyNames.isEmpty, requiredNames.isEmpty, let first = semantic.names.first {
+                keys = [first]
+            }
+            for key in keys {
                 output[key] = semantic.value
             }
         }

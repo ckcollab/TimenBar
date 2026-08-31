@@ -119,6 +119,15 @@ struct TimerDraft: Codable, Hashable, Sendable {
 enum TimerDurationInput {
     static func parse(_ text: String) -> TimeInterval? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.contains(":"),
+           !trimmed.isEmpty,
+           trimmed.allSatisfy(\.isNumber),
+           let hours = Int(trimmed),
+           hours <= Int.max / 3_600
+        {
+            return TimeInterval(hours * 3_600)
+        }
+
         let components = trimmed.split(separator: ":", omittingEmptySubsequences: false)
         guard components.count == 2,
               !components[0].isEmpty,

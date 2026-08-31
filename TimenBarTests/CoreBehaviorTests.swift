@@ -9,7 +9,11 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertEqual(TimerDurationInput.parse("1:30"), 5_400)
         XCTAssertEqual(TimerDurationInput.parse(" 12:05 "), 43_500)
         XCTAssertEqual(TimerDurationInput.parse("1:5"), 3_900)
-        XCTAssertNil(TimerDurationInput.parse("90"))
+        XCTAssertEqual(TimerDurationInput.parse("1"), 3_600)
+        XCTAssertEqual(TimerDurationInput.parse(" 1 "), 3_600)
+        XCTAssertEqual(TimerDurationInput.parse("0"), 0)
+        XCTAssertEqual(TimerDurationInput.parse("90"), 324_000)
+        XCTAssertEqual(TimerDurationInput.format(3_600), "1:00")
         XCTAssertNil(TimerDurationInput.parse("1:60"))
         XCTAssertNil(TimerDurationInput.parse("-1:30"))
         XCTAssertNil(TimerDurationInput.parse("hours"))
@@ -485,14 +489,16 @@ final class AppModelAccountIsolationTests: XCTestCase {
             source: "status-bar"
         )
         XCTAssertEqual(model.errorMessage, TimenBarError.unsavedMutationMessage)
-        XCTAssertEqual(await gateway.startTimerCallCount(), 0)
+        let startCalls = await gateway.startTimerCallCount()
+        XCTAssertEqual(startCalls, 0)
 
         await model.logTime(
             start: Date(timeIntervalSince1970: 1_000),
             end: Date(timeIntervalSince1970: 1_600),
             draft: TimerDraft(projectID: "p", tagIDs: [], note: "", billable: true)
         )
-        XCTAssertEqual(await gateway.logTimeCallCount(), 0)
+        let logTimeCalls = await gateway.logTimeCallCount()
+        XCTAssertEqual(logTimeCalls, 0)
         XCTAssertTrue(model.entries.isEmpty)
     }
 

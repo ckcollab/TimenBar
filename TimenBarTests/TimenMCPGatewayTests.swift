@@ -72,6 +72,27 @@ final class TimenMCPGatewayTests: XCTestCase {
         )
     }
 
+    func testDeleteArgumentsEmitRequiredIDEvenWhenSchemaAdvertisesTimeEntryID() {
+        let schema = inputSchema(properties: ["time_entry_id", "confirm"], required: ["id"])
+        let arguments = TimenMCPArgumentBuilder.arguments(schema: schema, values: [
+            SemanticArgument(names: ["id", "time_entry_id", "entry_id"], value: .int(42)),
+            SemanticArgument(names: ["confirm"], value: .bool(true)),
+        ])
+
+        XCTAssertEqual(arguments["id"], .int(42))
+        XCTAssertEqual(arguments["time_entry_id"], .int(42))
+        XCTAssertEqual(arguments["confirm"], .bool(true))
+    }
+
+    func testDeleteArgumentsEmitIDWhenSchemaOmitsPropertyNames() {
+        let arguments = TimenMCPArgumentBuilder.arguments(schema: nil, values: [
+            SemanticArgument(names: ["id", "time_entry_id", "entry_id"], value: .string("100")),
+        ])
+
+        XCTAssertEqual(arguments["id"], .string("100"))
+        XCTAssertNil(arguments["time_entry_id"])
+    }
+
     func testCompletedEntryUpdateEmitsDurationAlongsideStartAndEnd() throws {
         let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-20T16:00:00Z"))
         let end = start.addingTimeInterval(5_400)
@@ -612,14 +633,18 @@ final class TimenMCPGatewayTests: XCTestCase {
         try JSONDecoder().decode(Value.self, from: Data(json.utf8))
     }
 
-    private func inputSchema(properties: [String]) -> Value {
-        .object([
+    private func inputSchema(properties: [String], required: [String] = []) -> Value {
+        var object: [String: Value] = [
             "type": .string("object"),
             "properties": .object(Dictionary(uniqueKeysWithValues: properties.map {
                 ($0, .object(["type": .string("boolean")]))
             })),
             "additionalProperties": .bool(false),
-        ])
+        ]
+        if !required.isEmpty {
+            object["required"] = .array(required.map { .string($0) })
+        }
+        return .object(object)
     }
 
     private func assertInvalidResponse<T>(

@@ -12,7 +12,7 @@ struct EntryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.projectName ?? "Unassigned")
                         .font(.headline)

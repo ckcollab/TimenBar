@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TimerComposerView: View {
@@ -174,20 +175,18 @@ struct TimerComposerView: View {
                 .accessibilityValue(elapsedText)
                 .timenCard()
         case .new, .restart, .edit:
-            TextField("H:MM", text: $durationText)
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.center)
-                .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
-                .foregroundStyle(
-                    hasAttemptedSubmit && durationForSubmission == nil ? .red : .primary
-                )
-                .frame(width: 112)
-                .frame(minHeight: 76)
-                .accessibilityLabel("Duration")
-                .accessibilityValue(durationText)
-                .accessibilityHint("Enter hours and minutes in H:MM format")
-                .onChange(of: durationText) { _, _ in durationWasEdited = true }
-                .timenCard()
+            DurationEntryField(
+                text: $durationText,
+                showsInvalid: hasAttemptedSubmit && durationForSubmission == nil,
+                onSubmit: performPrimaryAction
+            )
+            .frame(width: 112)
+            .frame(minHeight: 76)
+            .accessibilityLabel("Duration")
+            .accessibilityValue(durationText)
+            .accessibilityHint("Enter hours and minutes in H:MM format, or a whole number of hours")
+            .onChange(of: durationText) { _, _ in durationWasEdited = true }
+            .timenCard()
         }
     }
 
@@ -485,7 +484,7 @@ struct TimerComposerView: View {
 
     private var durationValidationMessage: String? {
         guard supportsDateEditing else { return nil }
-        guard let duration = durationForSubmission else { return "Enter duration as H:MM." }
+        guard let duration = durationForSubmission else { return "Enter duration as H:MM, or a whole number of hours." }
         if isFutureEntryDate { return "Choose today or an earlier date." }
         switch mode {
         case .edit:
@@ -524,6 +523,10 @@ struct TimerComposerView: View {
     }
 
     private func performPrimaryAction() {
+        if let duration = TimerDurationInput.parse(durationText) {
+            durationText = TimerDurationInput.format(duration)
+        }
+
         guard canAttemptSubmit else { return }
         hasAttemptedSubmit = true
         guard canSubmit else { return }
@@ -561,6 +564,107 @@ struct TimerComposerView: View {
                     end: shifted.end
                 )
             }
+        }
+    }
+}
+
+private struct DurationEntryField: NSViewRepresentable {
+    @Binding var text: String
+    var showsInvalid: Bool
+    var onSubmit: () -> Void
+
+    func makeNSView(context: Context) -> DurationFieldContainer {
+        let container = DurationFieldContainer()
+        container.field.delegate = context.coordinator
+        container.field.stringValue = text
+        return container
+    }
+
+    func updateNSView(_ container: DurationFieldContainer, context: Context) {
+        context.coordinator.parent = self
+        container.field.textColor = showsInvalid ? .systemRed : .labelColor
+        if container.field.currentEditor() == nil, container.field.stringValue != text {
+            container.field.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: DurationEntryField
+
+        init(_ parent: DurationEntryField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ obj: Notification) {
+            parent.text = (obj.object as? NSTextField)?.stringValue ?? parent.text
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                if let field = control as? NSTextField,
+                   let duration = TimerDurationInput.parse(field.stringValue) {
+                    let formatted = TimerDurationInput.format(duration)
+                    field.stringValue = formatted
+                    parent.text = formatted
+                }
+                parent.onSubmit()
+                return true
+            }
+            return false
+        }
+    }
+}
+
+private final class DurationFieldContainer: NSView {
+    let field = ZeroSelectDurationField()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        field.placeholderString = "H:MM"
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.alignment = .center
+        field.font = NSFont.monospacedDigitSystemFont(ofSize: 28, weight: .regular)
+        field.lineBreakMode = .byClipping
+        field.cell?.isScrollable = true
+        field.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(field)
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: leadingAnchor),
+            field.trailingAnchor.constraint(equalTo: trailingAnchor),
+            field.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        window?.makeFirstResponder(field) ?? false
+    }
+}
+
+private final class ZeroSelectDurationField: NSTextField {
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted, stringValue == TimerDurationInput.format(0) {
+            selectText(nil)
+        }
+        return accepted
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        if stringValue == TimerDurationInput.format(0) {
+            currentEditor()?.selectAll(nil)
         }
     }
 }
