@@ -396,6 +396,9 @@ $draft && release_args+=(--draft)
 print "Creating GitHub release..."
 gh "${release_args[@]}"
 
+print "Requesting GitHub Pages rebuild so the appcast goes live..."
+gh api -X POST "repos/$github_repo/pages/builds" >/dev/null
+
 backup_dir=""
 trap - EXIT
 print "Released TimenBar $version."
