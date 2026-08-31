@@ -42,9 +42,12 @@
 
     body {
       min-height: 100vh;
+      min-height: 100dvh;
       margin: 0;
       display: grid;
-      place-items: center;
+      grid-template-rows: 1fr auto;
+      justify-items: center;
+      align-items: center;
       padding: 32px;
       background:
         radial-gradient(circle at 50% -12%, rgba(255, 139, 61, .22), transparent 42%),
@@ -146,6 +149,36 @@
       text-decoration: underline;
     }
 
+    .credit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      align-self: end;
+      margin: 0;
+      color: var(--secondary);
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .credit img {
+      display: block;
+      width: auto;
+      height: 16px;
+      opacity: .32;
+      transition: opacity .2s ease;
+    }
+
+    .credit a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .credit a:hover img,
+    .credit a:focus-visible img {
+      opacity: 1;
+    }
+
     @media (max-width: 520px) {
       body { padding: 18px; }
       main { padding: 36px 24px 30px; border-radius: 23px; }
@@ -182,5 +215,11 @@
       · MIT License
     </p>
   </main>
+  <p class="credit">
+    Created with ❤️ by
+    <a href="https://ckcollab.com" rel="noopener noreferrer">
+      <img src="ckc_logo.svg" alt="Ckc" width="32" height="16">
+    </a>
+  </p>
 </body>
 </html>

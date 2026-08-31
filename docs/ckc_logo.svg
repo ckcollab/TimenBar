@@ -1,0 +1,24 @@
+<svg viewBox="0 0 310.12 83.07" xmlns="http://www.w3.org/2000/svg">
+  <!-- Define the blinking animation -->
+  <style>
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    .cursor {
+      animation: blink 1s step-end infinite;
+    }
+    .prompt-text {
+      font-family: monospace;
+    }
+  </style>
+
+  <!-- Background rounded rectangle -->
+  <rect x="0" y="0.07" width="310.12" height="83" rx="12" fill="#ed2d67"/>
+
+  <!-- Command prompt arrow ">" -->
+  <path d="m20.5 14.9 26.87 26.87-26.87 26.87" fill="none" stroke="#ffffff" stroke-miterlimit="10" stroke-width="13"/>
+
+  <!-- Text "Ckc" and cursor -->
+  <text x="70" y="57" class="prompt-text" font-size="45" fill="#ffffff">Ckc<tspan class="cursor">_</tspan></text>
+</svg>
