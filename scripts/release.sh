@@ -4,6 +4,7 @@ set -euo pipefail
 root_dir="${0:A:h:h}"
 project_file="$root_dir/TimenBar.xcodeproj/project.pbxproj"
 generator_file="$root_dir/scripts/generate_project.rb"
+info_plist="$root_dir/TimenBar/Info.plist"
 scheme="TimenBar"
 remote="origin"
 env_file="${TIMENBAR_ENV_FILE:-$root_dir/.env}"
@@ -155,6 +156,7 @@ done
 
 [[ -f "$project_file" ]] || die "Xcode project not found"
 [[ -f "$generator_file" ]] || die "project generator not found"
+[[ -f "$info_plist" ]] || die "missing $info_plist"
 [[ -z "$(git status --porcelain)" ]] || die "working tree must be clean"
 
 branch="$(git branch --show-current)"
@@ -189,11 +191,9 @@ current_build="$(
 [[ "$current_build" =~ '^[0-9]+$' ]] || \
   die "the Xcode project must contain one consistent integer build number"
 
-sparkle_public_key="$(
-  sed -n 's/^[[:space:]]*INFOPLIST_KEY_SUPublicEDKey = "\([^"]*\)";/\1/p' "$project_file" | sort -u
-)"
+sparkle_public_key="$(plutil -extract SUPublicEDKey raw "$info_plist" 2>/dev/null || true)"
 [[ -n "$sparkle_public_key" && "$sparkle_public_key" != *$'\n'* ]] || \
-  die "run scripts/setup-sparkle-keys.sh before releasing so SUPublicEDKey is set"
+  die "run scripts/setup-sparkle-keys.sh before releasing so SUPublicEDKey is set in TimenBar/Info.plist"
 /usr/bin/ruby -e '
   require "rubygems"
   exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)
@@ -323,6 +323,10 @@ xcodebuild \
   -allowProvisioningUpdates
 
 codesign --verify --deep --strict --verbose=2 "$export_app"
+plutil -extract SUPublicEDKey raw "$export_app/Contents/Info.plist" >/dev/null || \
+  die "exported app is missing SUPublicEDKey; Sparkle keys must live in TimenBar/Info.plist"
+plutil -extract SUFeedURL raw "$export_app/Contents/Info.plist" >/dev/null || \
+  die "exported app is missing SUFeedURL"
 
 if ! $skip_notarization; then
   print "Submitting to Apple notarization..."

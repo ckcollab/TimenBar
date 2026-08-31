@@ -23,7 +23,7 @@ ui_test_target.add_dependency(app_target)
 
 def add_tree(group, disk_path, target, source_phase, resource_phase)
   Dir.children(disk_path).sort.each do |name|
-    next if name.start_with?(".") || name.end_with?(".entitlements")
+    next if name.start_with?(".") || name.end_with?(".entitlements") || name == "Info.plist"
 
     full_path = File.join(disk_path, name)
     if File.directory?(full_path) && File.extname(name) != ".xcassets"
@@ -88,12 +88,10 @@ app_target.build_configurations.each do |config|
   settings["SWIFT_STRICT_CONCURRENCY"] = "complete"
   settings["MACOSX_DEPLOYMENT_TARGET"] = "14.0"
   settings["GENERATE_INFOPLIST_FILE"] = "YES"
+  settings["INFOPLIST_FILE"] = "TimenBar/Info.plist"
   settings["INFOPLIST_KEY_LSUIElement"] = "YES"
   settings["INFOPLIST_KEY_LSApplicationCategoryType"] = "public.app-category.productivity"
   settings["INFOPLIST_KEY_NSHumanReadableCopyright"] = "Copyright © 2026 TimenBar contributors"
-  settings["INFOPLIST_KEY_SUEnableInstallerLauncherService"] = "YES"
-  settings["INFOPLIST_KEY_SUFeedURL"] = "https://ckcollab.github.io/TimenBar/appcast.xml"
-  settings["INFOPLIST_KEY_SUPublicEDKey"] = "3TpkYSv1lokJc0eHTYxw3nJDkfg1+/utFapErzWlDDE="
   settings["CODE_SIGN_ENTITLEMENTS"] = "TimenBar/TimenBar.entitlements"
   settings["ENABLE_APP_SANDBOX"] = "YES"
   settings["ENABLE_HARDENED_RUNTIME"] = "YES"
