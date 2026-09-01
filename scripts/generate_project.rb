@@ -97,8 +97,8 @@ app_target.build_configurations.each do |config|
   settings["ENABLE_HARDENED_RUNTIME"] = "YES"
   settings["CODE_SIGN_STYLE"] = "Automatic"
   settings["DEVELOPMENT_TEAM"] = "MMJZRMH2BA"
-  settings["CURRENT_PROJECT_VERSION"] = "12"
-  settings["MARKETING_VERSION"] = "0.2.0"
+  settings["CURRENT_PROJECT_VERSION"] = "13"
+  settings["MARKETING_VERSION"] = "0.2.1"
   settings["ASSETCATALOG_COMPILER_APPICON_NAME"] = "AppIcon"
   settings["DEAD_CODE_STRIPPING"] = "YES"
 end
