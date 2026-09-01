@@ -68,6 +68,23 @@ enum OAuthSecurity {
     static func challenge(for verifier: String) -> String {
         base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
     }
+
+    static func randomBase64URL(
+        byteCount: Int,
+        copyBytes: (Int, UnsafeMutableRawPointer) -> OSStatus = { count, pointer in
+            SecRandomCopyBytes(kSecRandomDefault, count, pointer)
+        }
+    ) throws -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
+        let status = bytes.withUnsafeMutableBytes { buffer -> OSStatus in
+            guard let pointer = buffer.baseAddress else { return errSecParam }
+            return copyBytes(byteCount, pointer)
+        }
+        guard status == errSecSuccess else {
+            throw TimenBarError.oauth("Could not generate a secure random value.")
+        }
+        return base64URL(Data(bytes))
+    }
 }
 
 enum OAuthCallbackPage {
@@ -312,6 +329,7 @@ actor OAuthSession {
     private var didLoadTokens = false
     private var cachedRegistration: OAuthClientRegistration?
     private var didLoadRegistration = false
+    private var refreshTask: Task<OAuthTokenSet, Error>?
 
     init(
         session: URLSession = .shared,
@@ -377,9 +395,9 @@ actor OAuthSession {
             forceNew: forceNewRegistration
         )
 
-        let verifier = Self.randomBase64URL(byteCount: 48)
+        let verifier = try OAuthSecurity.randomBase64URL(byteCount: 48)
         let challenge = OAuthSecurity.challenge(for: verifier)
-        let state = Self.randomBase64URL(byteCount: 32)
+        let state = try OAuthSecurity.randomBase64URL(byteCount: 32)
 
         var components = URLComponents(url: metadata.authorizationEndpoint, resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -412,17 +430,18 @@ actor OAuthSession {
     }
 
     func accessToken() async throws -> String {
-        guard var tokens = try await storedTokens() else {
+        guard let tokens = try await storedTokens() else {
             throw TimenBarError.notAuthenticated
         }
-        if tokens.needsRefresh {
-            tokens = try await refresh(tokens)
-            try await saveTokens(tokens)
+        if !tokens.needsRefresh {
+            return tokens.accessToken
         }
-        return tokens.accessToken
+        return try await coalescedRefresh(of: tokens).accessToken
     }
 
     func signOut() async throws {
+        refreshTask?.cancel()
+        refreshTask = nil
         let tokens = try await storedTokens()
         try await deleteTokens()
 
@@ -504,6 +523,31 @@ actor OAuthSession {
             "resource": resource.absoluteString,
         ])
         return try await tokenSet(from: request)
+    }
+
+    private func coalescedRefresh(of current: OAuthTokenSet) async throws -> OAuthTokenSet {
+        if let refreshTask {
+            return try await refreshTask.value
+        }
+
+        let task = Task {
+            do {
+                let refreshed = try await self.refresh(current)
+                try Task.checkCancellation()
+                try await self.saveTokens(refreshed)
+                await self.clearRefreshTask()
+                return refreshed
+            } catch {
+                await self.clearRefreshTask()
+                throw error
+            }
+        }
+        refreshTask = task
+        return try await task.value
+    }
+
+    private func clearRefreshTask() {
+        refreshTask = nil
     }
 
     private func refresh(_ current: OAuthTokenSet) async throws -> OAuthTokenSet {
@@ -595,12 +639,6 @@ actor OAuthSession {
         }
         do { return try JSONDecoder().decode(T.self, from: data) }
         catch { throw TimenBarError.invalidResponse(error.localizedDescription) }
-    }
-
-    private static func randomBase64URL(byteCount: Int) -> String {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return OAuthSecurity.base64URL(Data(bytes))
     }
 
     private static func formData(_ fields: [String: String]) -> Data {

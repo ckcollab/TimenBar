@@ -959,6 +959,77 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(savedEntry.duration, 4_200, accuracy: 0.01)
     }
 
+    func testIdleDeleteRemovesTheContinuedEntryInsteadOfMatchingThePreStopTimer() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-3_600)
+        let orphan = TimeEntry(
+            id: "local-orphan", remoteID: nil, start: originalStart,
+            end: originalStart.addingTimeInterval(60),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Unsynced leftover", tags: [], billable: true, syncState: .synced
+        )
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(1_800),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Continued work", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [orphan, original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        XCTAssertEqual(model.runningTimer?.id, "continuation:entry")
+        XCTAssertNil(model.runningTimer?.remoteID)
+
+        model.idlePrompt = IdlePromptState(idleStartedAt: Date.now.addingTimeInterval(-600), showRemovalChoices: true)
+        await model.resolveIdle(.deleteEntry)
+
+        let deletedIDs = await gateway.deletedEntryIDs()
+        XCTAssertEqual(deletedIDs, ["entry"])
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.idlePrompt)
+        XCTAssertEqual(model.entries.map(\.id), ["local-orphan"])
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testIdleDeleteRemovesTheEntryProducedByStoppingAStartedTimer() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(.empty)
+        XCTAssertEqual(model.runningTimer?.id, "timer")
+        XCTAssertEqual(model.runningTimer?.remoteID, "timer")
+
+        model.idlePrompt = IdlePromptState(idleStartedAt: Date.now.addingTimeInterval(-600), showRemovalChoices: true)
+        await model.resolveIdle(.deleteEntry)
+
+        let deletedIDs = await gateway.deletedEntryIDs()
+        XCTAssertEqual(deletedIDs, ["stopped-entry"])
+        XCTAssertNil(model.runningTimer)
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testSuccessfulAccountChangePublishesOnlyNewAccountState() async throws {
         let container = try makeContainer()
         let accountA = account(id: "account-a")
@@ -1399,6 +1470,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     private var startCalls = 0
     private var logTimeCalls: [LogTimeCall] = []
     private var durationUpdates: [TimeInterval] = []
+    private var deletedIDs: [String] = []
     private let firstAuthenticationWaitsForCancellation: Bool
     private var authenticationRequests = 0
     private var activeAuthenticationRequests = 0
@@ -1432,6 +1504,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     func logTimeCallCount() -> Int { logTimeCalls.count }
     func lastLogTimeCall() -> LogTimeCall? { logTimeCalls.last }
     func lastDurationUpdate() -> TimeInterval? { durationUpdates.last }
+    func deletedEntryIDs() -> [String] { deletedIDs }
     func projectRequestCount() -> Int { projectRequests }
     func authenticationRequestCount() -> Int { authenticationRequests }
     func maximumConcurrentAuthenticationRequestCount() -> Int { maximumConcurrentAuthenticationRequests }
@@ -1543,5 +1616,7 @@ private actor AccountLifecycleGateway: TimenGateway {
         entry.billable = draft.billable
         return entry
     }
-    func deleteEntry(id _: String) async throws { throw AccountLifecycleGatewayError.unsupportedMutation }
+    func deleteEntry(id: String) async throws {
+        deletedIDs.append(id)
+    }
 }

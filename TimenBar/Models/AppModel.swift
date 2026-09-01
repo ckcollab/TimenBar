@@ -613,14 +613,15 @@ final class AppModel {
         }
     }
 
-    func stopTimer(at desiredEnd: Date = .now, source: String = "unspecified") async {
+    @discardableResult
+    func stopTimer(at desiredEnd: Date = .now, source: String = "unspecified") async -> TimeEntry? {
         actionLogger.debug("stop-timer source=\(source, privacy: .public) timer=\(self.runningTimer?.remoteID ?? "none", privacy: .public)")
-        guard let timer = runningTimer else { return }
+        guard let timer = runningTimer else { return nil }
         guard authenticationState == .signedIn, connectivity.isOnline else {
             reportUnsavedMutation()
-            return
+            return nil
         }
-        guard let mutationAccountID = account?.id else { return }
+        guard let mutationAccountID = account?.id else { return nil }
         idlePrompt = nil
         idleMonitor.stop()
         let draft = TimerDraft(projectID: timer.projectID, tagIDs: timer.tags.map(\.id), note: timer.note, billable: true)
@@ -629,7 +630,7 @@ final class AppModel {
                 guard let original = resumedBaseEntry else {
                     errorMessage = "The original Timen entry could not be loaded. Return to its week and try again."
                     configureIdleMonitor()
-                    return
+                    return nil
                 }
                 let addedDuration = max(0, desiredEnd.timeIntervalSince(timer.startedAt))
                 let updated = try await gateway.updateEntryDuration(
@@ -637,7 +638,7 @@ final class AppModel {
                     draft: draft,
                     duration: original.duration + addedDuration
                 )
-                guard isMutationContextCurrent(mutationAccountID) else { return }
+                guard isMutationContextCurrent(mutationAccountID) else { return nil }
                 runningTimer = nil
                 self.resumedEntryID = nil
                 idlePrompt = nil
@@ -649,10 +650,10 @@ final class AppModel {
                 try? store.deleteEntry(id: original.id)
                 try? store.upsertEntries([updated])
                 dismissRunningComposerIfNeeded()
-                return
+                return updated
             }
             var remote = try await gateway.stopTimer()
-            guard isMutationContextCurrent(mutationAccountID) else { return }
+            guard isMutationContextCurrent(mutationAccountID) else { return nil }
             let timingChanged = abs(desiredEnd.timeIntervalSince(.now)) > 2
             let metadataChanged = remote.projectID != draft.projectID ||
                 Set(remote.tags.map(\.id)) != Set(draft.tagIDs) ||
@@ -664,7 +665,7 @@ final class AppModel {
                     start: timingChanged ? timer.startedAt : nil,
                     end: timingChanged ? desiredEnd : nil
                 )
-                guard isMutationContextCurrent(mutationAccountID) else { return }
+                guard isMutationContextCurrent(mutationAccountID) else { return nil }
             }
             runningTimer = nil
             resumedEntryID = nil
@@ -677,10 +678,12 @@ final class AppModel {
             try? store.deleteEntry(id: timer.id)
             try? store.upsertEntries([remote])
             dismissRunningComposerIfNeeded()
+            return remote
         } catch {
-            guard isMutationContextCurrent(mutationAccountID) else { return }
+            guard isMutationContextCurrent(mutationAccountID) else { return nil }
             reportUnsavedMutation(error)
             configureIdleMonitor()
+            return nil
         }
     }
 
@@ -839,9 +842,10 @@ final class AppModel {
         case let .removeIdleAndStop(idleStartedAt):
             await stopTimer(at: max(idleStartedAt, runningTimer?.startedAt ?? idleStartedAt), source: "idle-remove-and-stop")
         case .deleteEntry:
-            guard let timer = runningTimer else { return }
-            await stopTimer(at: .now, source: "idle-delete-entry")
-            if let entry = entries.first(where: { $0.id == timer.id || $0.remoteID == timer.remoteID }) { await deleteEntry(entry) }
+            guard runningTimer != nil else { return }
+            if let entry = await stopTimer(at: .now, source: "idle-delete-entry") {
+                await deleteEntry(entry)
+            }
         case .continueWorking:
             idleMonitor.suppressUntilActivity()
             idlePrompt = nil

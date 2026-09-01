@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 import XCTest
 @testable import TimenBar
 
@@ -282,6 +283,82 @@ final class OAuthSessionTests: XCTestCase {
             XCTAssertEqual(oauthError.detail, "Unknown client")
             XCTAssertTrue(oauthError.invalidatesClientRegistration)
         }
+    }
+
+    func testRandomBase64URLThrowsWhenSecRandomCopyBytesFails() {
+        XCTAssertThrowsError(
+            try OAuthSecurity.randomBase64URL(byteCount: 16, copyBytes: { count, pointer in
+                pointer.initializeMemory(as: UInt8.self, repeating: 0, count: count)
+                return errSecNotAvailable
+            })
+        ) { error in
+            guard case let TimenBarError.oauth(message) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(message, "Could not generate a secure random value.")
+        }
+    }
+
+    func testRandomBase64URLUsesCopiedBytesOnSuccess() throws {
+        let value = try OAuthSecurity.randomBase64URL(byteCount: 8, copyBytes: { count, pointer in
+            pointer.initializeMemory(as: UInt8.self, repeating: 0xAB, count: count)
+            return errSecSuccess
+        })
+        XCTAssertEqual(value, OAuthSecurity.base64URL(Data(repeating: 0xAB, count: 8)))
+        XCTAssertNotEqual(value, OAuthSecurity.base64URL(Data(repeating: 0, count: 8)))
+    }
+
+    func testConcurrentAccessTokenRefreshUsesTheRefreshTokenOnce() async throws {
+        OAuthRefreshRequestRecorder.shared.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        let keychain = KeychainStore(service: "app.timenbar.tests.oauth.refresh.\(UUID().uuidString)")
+        addTeardownBlock {
+            try await keychain.delete(account: "tokens")
+            try await keychain.delete(account: "registration")
+        }
+        try await keychain.save(
+            OAuthTokenSet(
+                accessToken: "expired-access",
+                tokenType: "Bearer",
+                refreshToken: "spent-refresh",
+                expiresAt: .now.addingTimeInterval(-1)
+            ),
+            account: "tokens"
+        )
+        try await keychain.save(
+            OAuthClientRegistration(
+                clientID: "registered-client",
+                redirectURI: try XCTUnwrap(URL(string: "http://127.0.0.1:41001/oauth/callback"))
+            ),
+            account: "registration"
+        )
+
+        let oauth = OAuthSession(session: session, keychain: keychain)
+        let first = Task { try await oauth.accessToken() }
+        let second = Task { try await oauth.accessToken() }
+
+        for _ in 0 ..< 200 {
+            if OAuthRefreshRequestRecorder.shared.tokenRequestCount >= 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(80))
+        let tokenRequestCount = OAuthRefreshRequestRecorder.shared.tokenRequestCount
+        OAuthRefreshRequestRecorder.shared.releaseTokenResponses()
+
+        let firstToken = try await first.value
+        let secondToken = try await second.value
+        let stored = try await keychain.load(OAuthTokenSet.self, account: "tokens")
+
+        XCTAssertEqual(tokenRequestCount, 1)
+        XCTAssertEqual(OAuthRefreshRequestRecorder.shared.refreshTokens, ["spent-refresh"])
+        XCTAssertEqual(firstToken, "rotated-access")
+        XCTAssertEqual(secondToken, "rotated-access")
+        XCTAssertEqual(stored?.accessToken, "rotated-access")
+        XCTAssertEqual(stored?.refreshToken, "rotated-refresh")
     }
 }
 
@@ -608,6 +685,134 @@ private final class OAuthBlockingURLProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {}
+
+    override func stopLoading() {}
+}
+
+private final class OAuthRefreshRequestRecorder: @unchecked Sendable {
+    static let shared = OAuthRefreshRequestRecorder()
+
+    private let lock = NSLock()
+    private var recordedTokenRequestCount = 0
+    private var recordedRefreshTokens: [String] = []
+    private var tokenGate = DispatchSemaphore(value: 0)
+
+    var tokenRequestCount: Int {
+        lock.withLock { recordedTokenRequestCount }
+    }
+
+    var refreshTokens: [String] {
+        lock.withLock { recordedRefreshTokens }
+    }
+
+    func reset() {
+        lock.withLock {
+            recordedTokenRequestCount = 0
+            recordedRefreshTokens = []
+            tokenGate = DispatchSemaphore(value: 0)
+        }
+    }
+
+    func releaseTokenResponses() {
+        for _ in 0 ..< 8 { tokenGate.signal() }
+    }
+
+    func response(for request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        guard let url = request.url else { throw OAuthTestError.unexpectedRequest("missing URL") }
+
+        switch (request.httpMethod ?? "GET", url.host, url.path) {
+        case ("GET", "mcp.gettimen.com", "/.well-known/oauth-protected-resource"):
+            return try json(
+                url: url,
+                status: 200,
+                body: #"{"resource":"https://mcp.gettimen.com/mcp","authorization_servers":["https://authorization.example"],"scopes_supported":["read","write","offline_access"]}"#
+            )
+
+        case ("GET", "authorization.example", "/.well-known/oauth-authorization-server"):
+            return try json(
+                url: url,
+                status: 200,
+                body: #"{"issuer":"https://authorization.example","authorization_endpoint":"https://authorization.example/authorize","token_endpoint":"https://authorization.example/token","registration_endpoint":"https://authorization.example/register","code_challenge_methods_supported":["S256"]}"#
+            )
+
+        case ("POST", "authorization.example", "/token"):
+            let form = Self.formFields(from: try Self.bodyData(from: request))
+            let requestNumber = lock.withLock { () -> Int in
+                recordedTokenRequestCount += 1
+                recordedRefreshTokens.append(form["refresh_token"] ?? "")
+                return recordedTokenRequestCount
+            }
+            tokenGate.wait()
+            if requestNumber > 1 || form["refresh_token"] != "spent-refresh" {
+                return try json(
+                    url: url,
+                    status: 400,
+                    body: #"{"error":"invalid_grant","error_description":"Refresh token already used"}"#
+                )
+            }
+            return try json(
+                url: url,
+                status: 200,
+                body: #"{"access_token":"rotated-access","token_type":"Bearer","expires_in":3600,"refresh_token":"rotated-refresh","scope":"read write offline_access"}"#
+            )
+
+        default:
+            throw OAuthTestError.unexpectedRequest("\(request.httpMethod ?? "GET") \(url.absoluteString)")
+        }
+    }
+
+    private func json(url: URL, status: Int, body: String) throws -> (HTTPURLResponse, Data) {
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ) else { throw OAuthTestError.unexpectedRequest("could not create response") }
+        return (response, Data(body.utf8))
+    }
+
+    private static func bodyData(from request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count == 0 { return body }
+            if count < 0 { throw stream.streamError ?? OAuthTestError.unexpectedRequest("could not read request body") }
+            body.append(buffer, count: count)
+        }
+    }
+
+    private static func formFields(from data: Data) -> [String: String] {
+        guard let body = String(data: data, encoding: .utf8) else { return [:] }
+        return body.split(separator: "&").reduce(into: [:]) { result, pair in
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return }
+            result[parts[0].removingPercentEncoding ?? parts[0]] =
+                parts[1].removingPercentEncoding ?? parts[1]
+        }
+    }
+}
+
+private final class OAuthRefreshURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with _: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        do {
+            let (response, data) = try OAuthRefreshRequestRecorder.shared.response(for: request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
 
     override func stopLoading() {}
 }
