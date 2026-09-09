@@ -6,6 +6,15 @@
     <description>TimenBar updates</description>
     <language>en</language>
     <item>
+      <title>TimenBar 0.2.2</title>
+      <link>https://github.com/ckcollab/TimenBar/releases/tag/v0.2.2</link>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 09 Sep 2026 18:17:36 GMT</pubDate>
+      <enclosure url='https://github.com/ckcollab/TimenBar/releases/download/v0.2.2/TimenBar-0.2.2.zip' sparkle:edSignature='EsJu3LklxVyySI13HBEiXGNr0GuiX0PbLMayAG/IVegazGfE5UnvGVJnBeLoilyvAGghSOtxXaBaLj9qNmx7BA==' length='5188344' type='application/octet-stream'/>
+    </item>
+    <item>
       <title>TimenBar 0.2.1</title>
       <link>https://github.com/ckcollab/TimenBar/releases/tag/v0.2.1</link>
       <sparkle:version>13</sparkle:version>
