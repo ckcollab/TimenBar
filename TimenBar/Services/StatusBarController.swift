@@ -133,8 +133,13 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     }
 
     private func showPanel() {
-        guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        guard statusItem.button != nil else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.appModel?.revealPanelIfStale()
+            guard let button = self.statusItem.button else { return }
+            self.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
     }
 
     func popoverShouldClose(_: NSPopover) -> Bool {
@@ -255,7 +260,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             // has a fixed width can recursively invalidate AppKit constraints and
             // eventually raise NSGenericException.
             hostingController.sizingOptions = []
-            let contentSize = ComposerAttachmentMetrics.contentSize
+            composerAttachmentLayout.contentHeight = ComposerAttachmentMetrics.compactHeight
+            let contentSize = composerWindowContentSize()
 
             if let window = composerWindowController?.window {
                 window.parent?.removeChildWindow(window)
@@ -298,6 +304,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             parentWindow.addChildWindow(composerWindow, ordered: .above)
         }
         composerWindow.level = parentWindow.level
+        applyComposerWindowSize(composerWindow)
         positionComposerWindow(
             composerWindow,
             relativeTo: parentWindow,
@@ -308,6 +315,29 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             NSApp.activate(ignoringOtherApps: true)
             composerWindow.makeKeyAndOrderFront(nil)
         }
+    }
+
+    private func applyComposerWindowSize(_ window: NSWindow) {
+        let size = composerWindowContentSize()
+        guard abs(window.frame.width - size.width) > 0.5 ||
+            abs(window.frame.height - size.height) > 0.5
+        else { return }
+        window.setContentSize(size)
+    }
+
+    private func composerWindowContentSize() -> NSSize {
+        let visibleFrame = composerWindowController?.window?.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+        let maximumHeight = max(
+            ComposerAttachmentMetrics.compactHeight,
+            (visibleFrame?.height ?? ComposerAttachmentMetrics.compactHeight)
+                - (2 * ComposerAttachmentMetrics.screenMargin)
+        )
+        let height = min(
+            maximumHeight,
+            max(ComposerAttachmentMetrics.compactHeight, composerAttachmentLayout.contentHeight)
+        )
+        return NSSize(width: ComposerAttachmentMetrics.totalWidth, height: height)
     }
 
     private func positionComposerWindow(
@@ -346,6 +376,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         displayedComposerAttachment = nil
         composerAnchorScreenPoint = nil
         composerAnchorTarget = nil
+        composerAttachmentLayout.contentHeight = ComposerAttachmentMetrics.compactHeight
         popover.behavior = .transient
         guard let window = composerWindowController?.window else {
             composerWindowController = nil
@@ -396,6 +427,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         withObservationTracking {
             _ = appModel?.composerMode?.id
             _ = appModel?.composerPresentationRequestID
+            _ = composerAttachmentLayout.contentHeight
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.synchronizeComposerWindow()
@@ -474,10 +506,18 @@ private enum ComposerAttachmentMetrics {
     static let contentSize = NSSize(width: totalWidth, height: compactHeight)
 }
 
+private struct ComposerContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 @Observable
 @MainActor
 private final class ComposerAttachmentLayout {
     var tailY: CGFloat = 250
+    var contentHeight: CGFloat = ComposerAttachmentMetrics.compactHeight
 }
 
 private struct AttachedTimerComposerView: View {
@@ -498,6 +538,21 @@ private struct AttachedTimerComposerView: View {
                 bubble.stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             }
             .frame(width: ComposerAttachmentMetrics.totalWidth)
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ComposerContentHeightKey.self, value: proxy.size.height)
+                }
+            }
+            .onPreferenceChange(ComposerContentHeightKey.self) { height in
+                // Ignore the first unmeasured frame, then size the window to the
+                // composer itself — chips, padding, and chrome included.
+                let next = ceil(height)
+                guard next > 200, abs(layout.contentHeight - next) > 0.5 else { return }
+                Task { @MainActor in
+                    layout.contentHeight = next
+                }
+            }
             .accessibilityElement(children: .contain)
     }
 }

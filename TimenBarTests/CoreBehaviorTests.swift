@@ -688,6 +688,283 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(composerDate, selectedDate)
     }
 
+    func testNewTimerRemembersTheLastProjectAndTags() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let programming = TimenTag(id: "programming", name: "Programming")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [programming],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(
+            TimerDraft(projectID: project.id, tagIDs: [programming.id], note: "Work", billable: true)
+        )
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(draft.tagIDs, [programming.id])
+        XCTAssertEqual(draft.projectID, project.id)
+        XCTAssertEqual(draft.note, "")
+    }
+
+    func testNewTimerDropsRememberedProjectThatIsNoLongerAvailable() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(
+            TimerDraft(projectID: project.id, tagIDs: [], note: "", billable: true)
+        )
+        model.projects = []
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertNil(draft.projectID)
+    }
+
+    func testNewTimerClearsRememberedTagsAfterAComposerStartWithoutThem() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let programming = TimenTag(id: "programming", name: "Programming")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [programming],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(
+            TimerDraft(projectID: nil, tagIDs: [programming.id], note: "", billable: true)
+        )
+        await model.startTimer(.empty)
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(draft.tagIDs, [])
+    }
+
+    func testFavoriteStartDoesNotReplaceRememberedTags() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let programming = TimenTag(id: "programming", name: "Programming")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [programming],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(
+            TimerDraft(projectID: project.id, tagIDs: [programming.id], note: "", billable: true)
+        )
+        model.favorites = [
+            Favorite(
+                id: UUID(), name: project.name, projectID: project.id,
+                tagIDs: [], note: "", billable: true, sortOrder: 0
+            )
+        ]
+        await model.startFavorite(model.favorites[0])
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(draft.tagIDs, [programming.id])
+    }
+
+    func testNewTimerDropsRememberedTagsThatAreNoLongerAvailable() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let programming = TimenTag(id: "programming", name: "Programming")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [programming],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(
+            TimerDraft(projectID: nil, tagIDs: [programming.id], note: "", billable: true)
+        )
+        model.tags = []
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(draft.tagIDs, [])
+    }
+
+    func testSavingARunningTimerRemembersItsTags() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let programming = TimenTag(id: "programming", name: "Programming")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [programming],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentNewTimer()
+        await model.startTimer(.empty, source: "timer-composer")
+        model.presentRunningTimer()
+        model.updateRunningTimer(
+            TimerDraft(projectID: nil, tagIDs: [programming.id], note: "", billable: true)
+        )
+
+        model.presentNewTimer()
+
+        guard case let .new(draft, _)? = model.composerMode else {
+            return XCTFail("Expected a new timer form")
+        }
+        XCTAssertEqual(draft.tagIDs, [programming.id])
+    }
+
+    func testRecentPanelOpenKeepsTheSelectedDay() async throws {
+        let container = try makeContainer()
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(
+            container: container,
+            gateway: AccountLifecycleGateway(
+                account: account(id: "account"),
+                projects: [],
+                tags: [],
+                entries: []
+            ),
+            defaults: defaults
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 2, hour: 10
+        )))
+        let wednesday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 4, hour: 10
+        )))
+
+        await model.signIn()
+        model.now = monday
+        model.selectDay(wednesday)
+        model.now = monday.addingTimeInterval(600)
+        await model.revealPanelIfStale()
+
+        XCTAssertTrue(calendar.isDate(model.selectedDate, inSameDayAs: wednesday))
+    }
+
+    func testStalePanelOpenReturnsToTheCurrentDay() async throws {
+        let container = try makeContainer()
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(
+            container: container,
+            gateway: AccountLifecycleGateway(
+                account: account(id: "account"),
+                projects: [],
+                tags: [],
+                entries: []
+            ),
+            defaults: defaults
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 2, hour: 10
+        )))
+        let wednesday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 4, hour: 10
+        )))
+
+        await model.signIn()
+        model.now = monday
+        model.selectDay(wednesday)
+        model.now = monday.addingTimeInterval(3_600)
+        await model.revealPanelIfStale()
+
+        XCTAssertTrue(calendar.isDate(model.selectedDate, inSameDayAs: monday.addingTimeInterval(3_600)))
+        XCTAssertFalse(calendar.isDate(model.selectedDate, inSameDayAs: wednesday))
+    }
+
+    func testStalePanelOpenLoadsTheCurrentWeekWhenTheSelectionWasElsewhere() async throws {
+        let container = try makeContainer()
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let previousFriday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 2, day: 27, hour: 10
+        )))
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 2, hour: 10
+        )))
+        let model = makeModel(
+            container: container,
+            gateway: AccountLifecycleGateway(
+                account: account(id: "account"),
+                projects: [],
+                tags: [],
+                entries: []
+            ),
+            defaults: defaults
+        )
+
+        await model.signIn()
+        model.now = monday
+        model.selectDay(previousFriday)
+        model.now = monday.addingTimeInterval(3_600)
+        await model.revealPanelIfStale()
+
+        XCTAssertTrue(calendar.isDate(model.selectedDate, inSameDayAs: monday.addingTimeInterval(3_600)))
+        XCTAssertFalse(calendar.isDate(model.selectedDate, inSameDayAs: previousFriday))
+    }
+
     func testOpeningComposerRefreshesProjectsAndPersistsLatestCatalog() async throws {
         let container = try makeContainer()
         let activeAccount = account(id: "account")
@@ -1129,6 +1406,7 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertNil(model.focusedEntryID)
         XCTAssertNil(model.quickStartEntry)
         XCTAssertNil(model.lastTimerDraft)
+        XCTAssertNil(model.lastTagIDs)
         XCTAssertNil(defaults.string(forKey: "accountScopedStateAccountID"))
         XCTAssertNil(try store.cachedAccount())
         XCTAssertTrue(try store.projects().isEmpty)

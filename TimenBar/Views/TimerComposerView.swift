@@ -323,47 +323,60 @@ struct TimerComposerView: View {
     }
 
     private var tagTypeahead: some View {
-        HStack(spacing: 8) {
-            if !selectedTags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(selectedTags) { tag in
+        HStack(alignment: selectedTags.isEmpty ? .center : .top, spacing: 8) {
+            Image(systemName: "tag")
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 22)
+                .accessibilityHidden(true)
+
+            if selectedTags.isEmpty {
+                Button { isTagPopoverPresented = true } label: {
+                    Text("Tags")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                TagChipFlow(spacing: 6) {
+                    ForEach(selectedTags) { tag in
+                        HStack(spacing: 4) {
+                            Text(tag.name).lineLimit(1)
                             Button {
                                 draft.tagIDs.removeAll { $0 == tag.id }
                             } label: {
-                                HStack(spacing: 4) {
-                                    Text(tag.name).lineLimit(1)
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 8, weight: .bold))
-                                }
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(appModel.timenTheme.accentMuted, in: Capsule())
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .padding(3)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Remove tag \(tag.name)")
                         }
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.1), in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
 
             Button { isTagPopoverPresented = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "tag")
-                    Text(selectedTags.isEmpty ? "Tags (optional)" : "Add tags")
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
-                }
-                .foregroundStyle(selectedTags.isEmpty ? .secondary : .primary)
-                .contentShape(Rectangle())
+                Image(systemName: "plus")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .frame(minWidth: selectedTags.isEmpty ? 180 : 92)
-            .accessibilityLabel("Tags")
-            .accessibilityValue(selectedTags.map(\.name).joined(separator: ", "))
+            .help("Add tags")
+            .accessibilityLabel("Add tags")
             .accessibilityHint("Opens searchable tag choices")
             .popover(isPresented: $isTagPopoverPresented, arrowEdge: .bottom) {
                 TagTypeaheadPopover(
@@ -375,7 +388,12 @@ struct TimerComposerView: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 50)
+        .padding(.vertical, selectedTags.isEmpty ? 0 : 12)
+        .frame(minHeight: 50)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tags")
+        .accessibilityValue(selectedTags.map(\.name).joined(separator: ", "))
     }
 
     private var selectedProject: TimenProject? {
@@ -830,6 +848,51 @@ private struct ProjectChoice: Identifiable {
     var systemImage: String {
         if isFavorite { return "star.fill" }
         return project == nil ? "minus.circle" : "folder"
+    }
+}
+
+private struct TagChipFlow: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        // With no width, report a single-line ideal size. With a width, wrap
+        // and grow vertically so the parent can size like a token field.
+        let width = proposal.width ?? 0
+        if width <= 0 {
+            return layout(in: .greatestFiniteMagnitude, subviews: subviews).size
+        }
+        return layout(in: width, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = layout(in: bounds.width, subviews: subviews).frames
+        for (subview, frame) in zip(subviews, frames) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    private func layout(in width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let ideal = subview.sizeThatFits(.unspecified)
+            let chipWidth = width > 0 ? min(ideal.width, width) : ideal.width
+            let size = CGSize(width: chipWidth, height: ideal.height)
+            if x > 0, width > 0, x + size.width > width {
+                y += rowHeight + spacing
+                x = 0
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: width, height: y + rowHeight), frames)
     }
 }
 

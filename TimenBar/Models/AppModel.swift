@@ -16,6 +16,7 @@ final class AppModel {
     private enum DefaultsKey {
         static let accountID = "accountScopedStateAccountID"
         static let lastTimerDraft = "lastTimerDraft"
+        static let lastTagIDs = "lastTagIDs"
         static let focusedEntryID = "focusedEntryID"
         static let focusedEntrySnapshot = "focusedEntrySnapshot"
     }
@@ -52,6 +53,7 @@ final class AppModel {
     private(set) var composerPresentationRequestID: UUID?
     var idlePrompt: IdlePromptState?
     private(set) var lastTimerDraft: TimerDraft?
+    private(set) var lastTagIDs: [String]?
     private(set) var resumedEntryID: String?
     private(set) var focusedEntryID: String?
     private var focusedEntrySnapshot: TimeEntry?
@@ -75,6 +77,7 @@ final class AppModel {
     private var signInTask: Task<Void, Never>?
     private var signInAttemptID: UUID?
     private var lastKnownOnline = true
+    private var lastUserActivityAt: Date?
 
     init(
         container: ModelContainer,
@@ -417,7 +420,10 @@ final class AppModel {
         configureIdleMonitor()
     }
 
-    func selectDay(_ date: Date) { selectedDate = date }
+    func selectDay(_ date: Date) {
+        selectedDate = date
+        lastUserActivityAt = now
+    }
 
     func navigateWeek(by offset: Int) async {
         guard weekNavigationDirection == nil,
@@ -426,12 +432,33 @@ final class AppModel {
         else { return }
         weekNavigationDirection = offset < 0 ? -1 : 1
         defer { weekNavigationDirection = nil }
+        lastUserActivityAt = now
         await loadWeek(containing: destination)
+    }
+
+    func revealPanelIfStale() async {
+        let isStale = lastUserActivityAt.map { now.timeIntervalSince($0) >= 3_600 } ?? true
+        if isStale { await returnToCurrentDay() }
+        lastUserActivityAt = now
     }
 
     func presentNewTimer() {
         guard let accountID = account?.id else { return }
-        presentComposer(.new(.empty, selectedDate), for: accountID)
+        // Reuse the last project and tags the user committed, skipping any that
+        // are no longer available. Notes stay empty.
+        let rememberedProjectID = lastTimerDraft?.projectID.flatMap { projectID in
+            projects.contains(where: { $0.id == projectID && $0.isActive }) ? projectID : nil
+        }
+        let availableTagIDs = Set(tags.map(\.id))
+        let rememberedTagIDs = (lastTagIDs ?? lastTimerDraft?.tagIDs ?? [])
+            .filter { availableTagIDs.contains($0) }
+        presentComposer(
+            .new(
+                TimerDraft(projectID: rememberedProjectID, tagIDs: rememberedTagIDs, note: "", billable: true),
+                selectedDate
+            ),
+            for: accountID
+        )
     }
 
     func presentRunningTimer() {
@@ -506,6 +533,7 @@ final class AppModel {
         )
         lastTimerDraft = draft
         persistLastTimerDraft()
+        rememberLastTagIDs(draft.tagIDs)
         composerMode = nil
         try? store.discardActiveSegment()
         try? store.saveSegment(ActiveTimerSegment(
@@ -545,6 +573,9 @@ final class AppModel {
             runningTimer = remote
             lastTimerDraft = draft
             persistLastTimerDraft()
+            if source != "favorite" {
+                rememberLastTagIDs(draft.tagIDs)
+            }
             composerMode = nil
             try? store.discardActiveSegment()
             try? store.saveSegment(ActiveTimerSegment(
@@ -587,6 +618,7 @@ final class AppModel {
             composerMode = nil
             lastTimerDraft = draft
             persistLastTimerDraft()
+            rememberLastTagIDs(draft.tagIDs)
             entries.removeAll { $0.id == logged.id || ($0.remoteID != nil && $0.remoteID == logged.remoteID) }
             entries.append(logged)
             if let remoteID = logged.remoteID { focus(on: remoteID) }
@@ -710,6 +742,9 @@ final class AppModel {
         timer.note = draft.note
         timer.billable = draft.billable
         runningTimer = timer
+        lastTimerDraft = draft
+        persistLastTimerDraft()
+        rememberLastTagIDs(draft.tagIDs)
         try? store.updateActiveSegment(draft: draft)
         composerMode = nil
     }
@@ -1103,6 +1138,11 @@ final class AppModel {
         if let data = defaults.data(forKey: DefaultsKey.lastTimerDraft) {
             lastTimerDraft = try? JSONDecoder().decode(TimerDraft.self, from: data)
         }
+        if let data = defaults.data(forKey: DefaultsKey.lastTagIDs) {
+            lastTagIDs = try? JSONDecoder().decode([String].self, from: data)
+        } else if let lastTimerDraft {
+            rememberLastTagIDs(lastTimerDraft.tagIDs)
+        }
         focusedEntryID = defaults.string(forKey: DefaultsKey.focusedEntryID)
         if let data = defaults.data(forKey: DefaultsKey.focusedEntrySnapshot) {
             focusedEntrySnapshot = try? JSONDecoder().decode(TimeEntry.self, from: data)
@@ -1112,6 +1152,7 @@ final class AppModel {
     private func clearAccountScopedDefaults() {
         defaults.removeObject(forKey: DefaultsKey.accountID)
         defaults.removeObject(forKey: DefaultsKey.lastTimerDraft)
+        defaults.removeObject(forKey: DefaultsKey.lastTagIDs)
         defaults.removeObject(forKey: DefaultsKey.focusedEntryID)
         defaults.removeObject(forKey: DefaultsKey.focusedEntrySnapshot)
     }
@@ -1142,6 +1183,7 @@ final class AppModel {
         focusedEntryID = nil
         focusedEntrySnapshot = nil
         lastTimerDraft = nil
+        lastTagIDs = nil
         composerAccountID = nil
         composerMode = nil
         idlePrompt = nil
@@ -1153,6 +1195,28 @@ final class AppModel {
               let data = try? JSONEncoder().encode(lastTimerDraft)
         else { return }
         defaults.set(data, forKey: DefaultsKey.lastTimerDraft)
+    }
+
+    private func rememberLastTagIDs(_ tagIDs: [String]) {
+        lastTagIDs = tagIDs
+        guard claimAccountScopedDefaults(),
+              let data = try? JSONEncoder().encode(tagIDs)
+        else { return }
+        defaults.set(data, forKey: DefaultsKey.lastTagIDs)
+    }
+
+    private func returnToCurrentDay() async {
+        let calendar = accountCalendar
+        let current = now
+        guard !calendar.isDate(selectedDate, inSameDayAs: current) else { return }
+        let currentWeek = weekInterval(containing: current)
+        let selectedWeek = weekInterval(containing: selectedDate)
+        selectedDate = current
+        guard selectedWeek.start != currentWeek.start else { return }
+        entries = (try? store.entries(from: currentWeek.start, to: currentWeek.end)) ?? []
+        if authenticationState == .signedIn, connectivity.isOnline {
+            await loadWeek(containing: current)
+        }
     }
 
     private func visibleWeekInterval() -> DateInterval {
@@ -1205,6 +1269,9 @@ final class AppModel {
                 billable: entry.billable
             )
             persistLastTimerDraft()
+        }
+        if lastTagIDs == nil {
+            rememberLastTagIDs(lastTimerDraft?.tagIDs ?? entry.tags.map(\.id))
         }
     }
 
