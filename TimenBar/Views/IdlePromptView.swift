@@ -2,13 +2,20 @@ import SwiftUI
 
 struct IdlePromptView: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.dismiss) private var dismiss
     let prompt: IdlePromptState
     @State private var showRemovalChoices: Bool
 
     init(prompt: IdlePromptState) {
         self.prompt = prompt
         _showRemovalChoices = State(initialValue: prompt.showRemovalChoices)
+    }
+
+    private var keptTimeText: String {
+        appModel.runningDisplayDuration.compactSpokenDuration
+    }
+
+    private var idlePortionText: String {
+        max(0, appModel.now.timeIntervalSince(prompt.idleStartedAt)).compactSpokenDuration
     }
 
     var body: some View {
@@ -27,15 +34,13 @@ struct IdlePromptView: View {
 
             if showRemovalChoices {
                 VStack(spacing: 10) {
-                    Button("Remove idle portion and stop") {
+                    Button("Remove \(idlePortionText) and stop") {
                         Task { await appModel.resolveIdle(.removeIdleAndStop(idleStartedAt: prompt.idleStartedAt)) }
-                        dismiss()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(appModel.timenTheme.accent)
                     Button("Delete the entire entry", role: .destructive) {
                         Task { await appModel.resolveIdle(.deleteEntry) }
-                        dismiss()
                     }
                     Button("Back") {
                         showRemovalChoices = false
@@ -43,19 +48,23 @@ struct IdlePromptView: View {
                 }
             } else {
                 VStack(spacing: 10) {
-                    Button("Keep time and stop") {
+                    Button {
                         Task { await appModel.resolveIdle(.keepAndStop) }
-                        dismiss()
+                    } label: {
+                        Label("Keep \(keptTimeText) and stop", systemImage: "stop.fill")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(appModel.timenTheme.accent)
-                    Button("Remove time…") {
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    Button("Remove \(idlePortionText)…") {
                         showRemovalChoices = true
                     }
-                    Button("Continue working") {
+                    Button {
                         Task { await appModel.resolveIdle(.continueWorking) }
-                        dismiss()
+                    } label: {
+                        Label("Continue working", systemImage: "play.fill")
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.green)
                 }
             }
         }

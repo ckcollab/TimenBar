@@ -890,7 +890,8 @@ final class AppModel {
     }
 
     func resolveIdle(_ resolution: IdleResolution) async {
-        guard let prompt = idlePrompt else { return }
+        // Do not require idlePrompt to still be set. The sheet binding can clear
+        // it as soon as the user clicks, which used to skip keep-and-stop.
         switch resolution {
         case .keepAndStop:
             await stopTimer(at: .now, source: "idle-keep-and-stop")
@@ -906,7 +907,6 @@ final class AppModel {
             idlePrompt = nil
         }
         if resolution.isTerminal { idlePrompt = nil }
-        _ = prompt
     }
 
     private func bootstrap() async {
@@ -975,6 +975,7 @@ final class AppModel {
             notBefore: runningTimer.startedAt
         ) { [weak self] idleStartedAt in
             guard let self, self.runningTimer != nil else { return }
+            self.dismissComposer()
             self.idlePrompt = IdlePromptState(idleStartedAt: idleStartedAt, showRemovalChoices: false)
             if self.settings.notificationsEnabled {
                 Task { await self.notificationService.notifyIdle(minutes: self.settings.idleThresholdMinutes) }

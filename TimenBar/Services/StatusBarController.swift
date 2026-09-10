@@ -62,6 +62,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         refresh()
         observeModel()
         observeComposerPresentation()
+        observeIdlePrompt()
     }
 
     private func configureStatusItem() {
@@ -421,6 +422,19 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             Task { @MainActor in
                 self?.refresh()
                 self?.observeModel()
+            }
+        }
+    }
+
+    private func observeIdlePrompt() {
+        withObservationTracking {
+            _ = appModel?.idlePrompt?.id
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                if self?.appModel?.idlePrompt != nil {
+                    self?.restorePopoverPresentation()
+                }
+                self?.observeIdlePrompt()
             }
         }
     }

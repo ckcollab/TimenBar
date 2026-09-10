@@ -269,6 +269,15 @@ extension TimeInterval {
         return String(format: "%d:%02d", hours, minutes)
     }
 
+    var compactSpokenDuration: String {
+        let totalMinutes = max(0, Int(self) / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours == 0 { return "\(minutes)m" }
+        if minutes == 0 { return "\(hours)hr" }
+        return "\(hours)hr \(minutes)m"
+    }
+
     var statusTimerText: String {
         let totalSeconds = max(0, Int(self))
         return String(format: "%02d:%02d", totalSeconds / 3600, (totalSeconds % 3600) / 60)

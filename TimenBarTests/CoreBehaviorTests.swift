@@ -17,6 +17,10 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertNil(TimerDurationInput.parse("1:60"))
         XCTAssertNil(TimerDurationInput.parse("-1:30"))
         XCTAssertNil(TimerDurationInput.parse("hours"))
+        XCTAssertEqual(TimeInterval(11 * 60).compactSpokenDuration, "11m")
+        XCTAssertEqual(TimeInterval(71 * 60).compactSpokenDuration, "1hr 11m")
+        XCTAssertEqual(TimeInterval(3_600).compactSpokenDuration, "1hr")
+        XCTAssertEqual(TimeInterval(0).compactSpokenDuration, "0m")
     }
 
     func testManualEntryEndsAtCurrentClockTimeOnSelectedDate() throws {
@@ -1374,6 +1378,32 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertNil(model.runningTimer)
         XCTAssertTrue(model.entries.isEmpty)
         XCTAssertNil(model.errorMessage)
+    }
+
+    func testIdleKeepAndStopStopsTheRunningTimerEvenIfThePromptWasDismissed() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(.empty)
+        XCTAssertNotNil(model.runningTimer)
+
+        // The sheet binding can clear idlePrompt as soon as the button is pressed.
+        model.idlePrompt = nil
+        await model.resolveIdle(.keepAndStop)
+
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.idlePrompt)
+        XCTAssertEqual(model.entries.count, 1)
     }
 
     func testSuccessfulAccountChangePublishesOnlyNewAccountState() async throws {
