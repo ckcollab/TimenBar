@@ -72,9 +72,12 @@ struct SettingsView: View {
             settingsPage {
                 SettingsCard(title: "Updates", systemImage: "arrow.down.circle") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Automatically check for updates", isOn: $settings.automaticUpdatesEnabled)
+                        Toggle("Automatically download and install updates", isOn: $settings.automaticUpdatesEnabled)
                             .toggleStyle(.checkbox)
                             .disabled(!appModel.updater.isConfigured)
+                        Text("When an update is available, TimenBar downloads it and installs it when you aren’t using the app, or when you quit. You don’t need to click anything.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Button("Check for Updates…") { appModel.updater.checkForUpdates() }
                             .disabled(!appModel.updater.isConfigured)
                         if !appModel.updater.isConfigured {
@@ -122,7 +125,7 @@ struct SettingsView: View {
         .onChange(of: settings.idleDetectionEnabled) { _, _ in appModel.trackingSettingsChanged() }
         .onChange(of: settings.idleThresholdMinutes) { _, _ in appModel.trackingSettingsChanged() }
         .onChange(of: settings.automaticUpdatesEnabled) { _, enabled in
-            if appModel.updater.isConfigured { appModel.updater.automaticallyChecksForUpdates = enabled }
+            appModel.updater.applyAutomaticUpdates(enabled)
         }
     }
 

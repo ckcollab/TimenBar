@@ -250,13 +250,14 @@ final class OfflineStore {
         return try context.fetch(descriptor).first?.domain
     }
 
-    func updateActiveSegment(draft: TimerDraft? = nil, remoteTimerID: String? = nil) throws {
+    func updateActiveSegment(draft: TimerDraft? = nil, remoteTimerID: String? = nil, startedAt: Date? = nil) throws {
         try requireAccountBinding()
         var descriptor = FetchDescriptor<PendingSegmentRecord>(predicate: #Predicate { $0.endedAt == nil })
         descriptor.fetchLimit = 1
         guard let record = try context.fetch(descriptor).first else { return }
         if let draft { record.draftData = (try? encoder.encode(draft)) ?? record.draftData }
         if let remoteTimerID { record.remoteTimerID = remoteTimerID }
+        if let startedAt { record.startedAt = startedAt }
         try context.save()
     }
 

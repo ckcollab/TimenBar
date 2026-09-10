@@ -149,11 +149,13 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 
     func popoverDidShow(_ notification: Notification) {
         guard notification.object as? NSPopover === popover else { return }
+        appModel?.isPanelVisible = true
         synchronizeComposerWindow(activate: false)
     }
 
     func popoverDidClose(_ notification: Notification) {
         guard notification.object as? NSPopover === popover else { return }
+        appModel?.isPanelVisible = false
         composerWindowController?.window?.orderOut(nil)
     }
 

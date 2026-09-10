@@ -867,6 +867,75 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(draft.tagIDs, [programming.id])
     }
 
+    func testSavingARunningTimerCanAdjustItsElapsedDuration() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.startTimer(.empty)
+        model.presentRunningTimer()
+        let startedAt = try XCTUnwrap(model.runningTimer?.startedAt)
+        model.now = startedAt.addingTimeInterval(120)
+
+        XCTAssertTrue(model.updateRunningTimer(.empty, duration: 1_800))
+
+        let timer = try XCTUnwrap(model.runningTimer)
+        XCTAssertEqual(timer.elapsed(at: model.now), 1_800, accuracy: 0.5)
+        XCTAssertEqual(try OfflineStore(container: container).activeSegment()?.startedAt, timer.startedAt)
+        XCTAssertNil(model.composerMode)
+    }
+
+    func testSavingAContinuedTimerDurationCannotDropTheSavedPortion() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-7_200)
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(3_600),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Continued work", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        model.presentRunningTimer()
+        let continuationStart = try XCTUnwrap(model.runningTimer?.startedAt)
+        model.now = continuationStart.addingTimeInterval(600)
+
+        XCTAssertFalse(model.updateRunningTimer(
+            TimerDraft(projectID: project.id, tagIDs: [], note: "Continued work", billable: true),
+            duration: 60
+        ))
+        XCTAssertEqual(model.runningTimer?.startedAt, continuationStart)
+        XCTAssertNotNil(model.errorMessage)
+
+        model.errorMessage = nil
+        XCTAssertTrue(model.updateRunningTimer(
+            TimerDraft(projectID: project.id, tagIDs: [], note: "Continued work", billable: true),
+            duration: 5_400
+        ))
+        XCTAssertEqual(model.runningDisplayDuration, 5_400, accuracy: 0.5)
+    }
+
     func testRecentPanelOpenKeepsTheSelectedDay() async throws {
         let container = try makeContainer()
         let defaults = makeDefaults()

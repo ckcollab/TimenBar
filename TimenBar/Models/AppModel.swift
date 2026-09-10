@@ -52,6 +52,7 @@ final class AppModel {
     }
     private(set) var composerPresentationRequestID: UUID?
     var idlePrompt: IdlePromptState?
+    var isPanelVisible = false
     private(set) var lastTimerDraft: TimerDraft?
     private(set) var lastTagIDs: [String]?
     private(set) var resumedEntryID: String?
@@ -95,6 +96,10 @@ final class AppModel {
         updater = UpdateController()
         store = OfflineStore(container: container)
         idleMonitor = IdleMonitor()
+        updater.applyAutomaticUpdates(self.settings.automaticUpdatesEnabled)
+        updater.setRelaunchPolicy { [weak self] in
+            self?.isSafeToRelaunchForUpdate ?? false
+        }
         loadCachedState()
         if startAutomatically {
             startHeartbeat()
@@ -719,21 +724,22 @@ final class AppModel {
         }
     }
 
-    func updateRunningTimer(_ draft: TimerDraft) {
+    @discardableResult
+    func updateRunningTimer(_ draft: TimerDraft, duration: TimeInterval? = nil) -> Bool {
         let draft = draft.enforcingBillable
         guard connectivity.isOnline else {
             reportUnsavedMutation()
-            return
+            return false
         }
-        guard var timer = runningTimer else { return }
+        guard var timer = runningTimer else { return false }
         guard let accountID = account?.id,
               composerAccountID == accountID,
               composerMode != nil
         else {
             errorMessage = "That timer form belongs to a previous Timen account."
-            return
+            return false
         }
-        guard validateDraftReferences(draft) else { return }
+        guard validateDraftReferences(draft) else { return false }
         let project = projects.first { $0.id == draft.projectID }
         timer.projectID = draft.projectID
         timer.projectName = project?.name
@@ -741,12 +747,26 @@ final class AppModel {
         timer.tags = tags.filter { draft.tagIDs.contains($0.id) }
         timer.note = draft.note
         timer.billable = draft.billable
+        var startedAt = timer.startedAt
+        if let duration {
+            // Displayed duration includes any already-saved continuation. Only
+            // the open segment start moves so the running total matches.
+            let segment = duration - resumedBaseEntryDuration
+            guard segment >= -0.5 else {
+                errorMessage = "Duration can’t be shorter than the time already saved on this entry."
+                return false
+            }
+            startedAt = now.addingTimeInterval(-max(0, segment))
+            timer.startedAt = startedAt
+        }
         runningTimer = timer
         lastTimerDraft = draft
         persistLastTimerDraft()
         rememberLastTagIDs(draft.tagIDs)
-        try? store.updateActiveSegment(draft: draft)
+        try? store.updateActiveSegment(draft: draft, startedAt: duration == nil ? nil : startedAt)
+        if duration != nil { configureIdleMonitor() }
         composerMode = nil
+        return true
     }
 
     func trackingSettingsChanged() { configureIdleMonitor() }
@@ -935,6 +955,17 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+
+    private var isSafeToRelaunchForUpdate: Bool {
+        runningTimer == nil
+            && !isPanelVisible
+            && composerMode == nil
+            && idlePrompt == nil
+            && errorMessage == nil
+            && !isAuthenticationTransitioning
+            && authenticationState != .signingIn
+            && authenticationState != .checking
     }
 
     private func configureIdleMonitor() {

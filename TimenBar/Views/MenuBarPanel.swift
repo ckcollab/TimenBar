@@ -148,6 +148,14 @@ struct MenuBarPanel: View {
             Spacer()
 
             Menu {
+                if appModel.authenticationState == .signedIn, let account = appModel.account {
+                    Text(account.name)
+                    if let email = account.email, !email.isEmpty {
+                        Text(email)
+                    }
+                    Divider()
+                }
+
                 Button {
                     showSettings()
                 } label: {

@@ -32,7 +32,13 @@ final class IdleMonitor {
     private var policy = IdlePromptPolicy(threshold: 600)
 
     init(idleProvider: @escaping @Sendable () -> TimeInterval = {
-        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .null)
+        // kCGAnyInputEventType (~0): last keyboard, mouse, or tablet event.
+        // `.null` is a placeholder type, not “any input”, and stays huge while
+        // you’re still working — so the idle prompt would fire on a running timer.
+        CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState,
+            eventType: CGEventType(rawValue: ~CGEventType.RawValue(0))!
+        )
     }) {
         self.idleProvider = idleProvider
         let center = NSWorkspace.shared.notificationCenter

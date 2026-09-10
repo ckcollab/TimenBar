@@ -14,6 +14,8 @@ struct TimerComposerView: View {
     @State private var isProjectPopoverPresented = false
     @State private var isTagPopoverPresented = false
     @State private var isDatePickerPresented = false
+    @FocusState private var focusedField: ComposerField?
+    @State private var tabOrder = ComposerTabOrder()
     private let originalDuration: TimeInterval
 
     init(mode: TimerComposerMode) {
@@ -91,24 +93,35 @@ struct TimerComposerView: View {
                 }
 
                 HStack(alignment: .top, spacing: 12) {
-                    TextEditor(text: $draft.note)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .frame(minHeight: 76)
-                        .overlay(alignment: .topLeading) {
-                            if draft.note.isEmpty {
-                                Text("Notes (optional)")
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.horizontal, 13)
-                                    .padding(.vertical, 12)
-                                    .allowsHitTesting(false)
-                            }
+                    NotesEntryField(
+                        text: $draft.note,
+                        tabOrder: tabOrder,
+                        onTab: { focusedField = .duration }
+                    )
+                    .focused($focusedField, equals: .notes)
+                    .padding(8)
+                    .frame(minHeight: 76)
+                    .overlay(alignment: .topLeading) {
+                        if draft.note.isEmpty {
+                            Text("Notes (optional)")
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 13)
+                                .padding(.vertical, 12)
+                                .allowsHitTesting(false)
                         }
-                        .accessibilityLabel("Notes")
-                        .timenCard()
+                    }
+                    .accessibilityLabel("Notes")
+                    .timenCard()
 
                     durationEditor
+                }
+                .onKeyPress(.tab) {
+                    focusedField = .duration
+                    return tabOrder.focusDuration() ? .handled : .ignored
+                }
+                .onChange(of: appModel.now) { _, _ in
+                    guard case .running = mode, !durationWasEdited, focusedField != .duration else { return }
+                    durationText = TimerDurationInput.format(appModel.runningDisplayDuration)
                 }
 
                 if !appModel.connectivity.isOnline {
@@ -143,12 +156,13 @@ struct TimerComposerView: View {
                 Spacer()
                 if supportsDateEditing { cancelButton }
                 if case .running = mode {
-                    Button("Stop") {
-                        appModel.dismissComposer()
-                        Task { await appModel.stopTimer(source: "running-composer-stop") }
+                    Button(action: performStopAction) {
+                        Label("Stop", systemImage: "stop.fill")
                     }
                     .buttonStyle(.bordered)
+                    .tint(.red)
                     .disabled(!appModel.connectivity.isOnline)
+                    .help("Stop the running timer")
                 }
                 Button(primaryTitle) { performPrimaryAction() }
                     .buttonStyle(.borderedProminent)
@@ -160,34 +174,34 @@ struct TimerComposerView: View {
             .background(.bar)
         }
         .frame(width: 520)
+        .onAppear {
+            if case .running = mode {
+                durationText = TimerDurationInput.format(appModel.runningDisplayDuration)
+            }
+            if focusedField == nil {
+                focusedField = .notes
+            }
+        }
     }
 
-    @ViewBuilder
     private var durationEditor: some View {
-        switch mode {
-        case .running:
-            Text(elapsedText)
-                .font(.system(size: 28, weight: .regular, design: .rounded).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 112)
-                .frame(minHeight: 76)
-                .accessibilityLabel("Elapsed duration")
-                .accessibilityValue(elapsedText)
-                .timenCard()
-        case .new, .restart, .edit:
-            DurationEntryField(
-                text: $durationText,
-                showsInvalid: hasAttemptedSubmit && durationForSubmission == nil,
-                onSubmit: performPrimaryAction
-            )
-            .frame(width: 112)
-            .frame(minHeight: 76)
-            .accessibilityLabel("Duration")
-            .accessibilityValue(durationText)
-            .accessibilityHint("Enter hours and minutes in H:MM format, or a whole number of hours")
-            .onChange(of: durationText) { _, _ in durationWasEdited = true }
-            .timenCard()
-        }
+        DurationEntryField(
+            text: $durationText,
+            tabOrder: tabOrder,
+            showsInvalid: hasAttemptedSubmit && (
+                durationForSubmission == nil || (durationWasEdited && !isRunningDurationAtLeastSavedPortion)
+            ),
+            onSubmit: performPrimaryAction,
+            onBacktab: { focusedField = .notes },
+            onUserEdit: { durationWasEdited = true }
+        )
+        .focused($focusedField, equals: .duration)
+        .frame(width: 112)
+        .frame(minHeight: 76)
+        .accessibilityLabel("Duration")
+        .accessibilityValue(durationText)
+        .accessibilityHint("Enter hours and minutes in H:MM format, or a whole number of hours")
+        .timenCard()
     }
 
     private var cancelButton: some View {
@@ -448,6 +462,9 @@ struct TimerComposerView: View {
 
         switch mode {
         case .running:
+            if durationWasEdited {
+                return durationForSubmission != nil && isRunningDurationAtLeastSavedPortion
+            }
             return true
         case .edit:
             guard !isFutureEntryDate,
@@ -500,7 +517,25 @@ struct TimerComposerView: View {
         return calendar.startOfDay(for: entryDate) > calendar.startOfDay(for: appModel.now)
     }
 
+    private var runningDurationFloor: TimeInterval {
+        guard case .running = mode, let timer = appModel.runningTimer else { return 0 }
+        return max(0, appModel.runningDisplayDuration - timer.elapsed(at: appModel.now))
+    }
+
+    private var isRunningDurationAtLeastSavedPortion: Bool {
+        guard let duration = durationForSubmission else { return true }
+        return duration + 0.5 >= runningDurationFloor
+    }
+
     private var durationValidationMessage: String? {
+        if case .running = mode {
+            guard durationWasEdited else { return nil }
+            guard durationForSubmission != nil else { return "Enter duration as H:MM, or a whole number of hours." }
+            if !isRunningDurationAtLeastSavedPortion {
+                return "Duration can’t be shorter than the time already saved on this entry."
+            }
+            return nil
+        }
         guard supportsDateEditing else { return nil }
         guard let duration = durationForSubmission else { return "Enter duration as H:MM, or a whole number of hours." }
         if isFutureEntryDate { return "Choose today or an earlier date." }
@@ -532,14 +567,6 @@ struct TimerComposerView: View {
         }
     }
 
-    private var elapsedText: String {
-        switch mode {
-        case .new, .restart: "0:00"
-        case .running: appModel.runningDisplayDuration.timerText
-        case .edit: originalDuration.timerText
-        }
-    }
-
     private func performPrimaryAction() {
         if let duration = TimerDurationInput.parse(durationText) {
             durationText = TimerDurationInput.format(duration)
@@ -568,7 +595,10 @@ struct TimerComposerView: View {
                 }
             }
         case .running:
-            appModel.updateRunningTimer(billableDraft)
+            appModel.updateRunningTimer(
+                billableDraft,
+                duration: durationWasEdited ? durationForSubmission : nil
+            )
         case let .edit(entry):
             guard (durationForSubmission ?? 0) > 0,
                   let shifted = editedInterval,
@@ -584,12 +614,193 @@ struct TimerComposerView: View {
             }
         }
     }
+
+    private func performStopAction() {
+        guard canAttemptSubmit else { return }
+        let billableDraft = draft.enforcingBillable
+        if durationWasEdited {
+            hasAttemptedSubmit = true
+            guard canSubmit, let duration = durationForSubmission else { return }
+            guard appModel.updateRunningTimer(billableDraft, duration: duration) else { return }
+        } else {
+            appModel.dismissComposer()
+        }
+        Task { await appModel.stopTimer(source: "running-composer-stop") }
+    }
+}
+
+private enum ComposerField: Hashable {
+    case notes
+    case duration
+}
+
+@MainActor
+private final class ComposerTabOrder {
+    weak var notes: NSTextView?
+    weak var duration: NSTextField?
+
+    @discardableResult
+    func focusDuration() -> Bool {
+        guard let duration else { return false }
+        return duration.window?.makeFirstResponder(duration) ?? false
+    }
+
+    @discardableResult
+    func focusNotes() -> Bool {
+        guard let notes else { return false }
+        return notes.window?.makeFirstResponder(notes) ?? false
+    }
+}
+
+private struct NotesEntryField: NSViewRepresentable {
+    @Binding var text: String
+    var tabOrder: ComposerTabOrder
+    var onTab: () -> Void
+
+    func makeNSView(context: Context) -> NotesFieldContainer {
+        let container = NotesFieldContainer()
+        container.textView.delegate = context.coordinator
+        container.textView.string = text
+        context.coordinator.textView = container.textView
+        return container
+    }
+
+    func updateNSView(_ container: NotesFieldContainer, context: Context) {
+        context.coordinator.parent = self
+        container.textView.tabOrder = tabOrder
+        container.textView.onTab = onTab
+        tabOrder.notes = container.textView
+        if container.textView.string != text, container.window?.firstResponder !== container.textView {
+            container.textView.string = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: NotesEntryField
+        weak var textView: NSTextView?
+
+        init(_ parent: NotesEntryField) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            parent.text = textView?.string ?? parent.text
+        }
+
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertTab(_:))
+                || commandSelector == #selector(NSResponder.insertTabIgnoringFieldEditor(_:))
+            {
+                (textView as? NotesTextView)?.insertTab(nil)
+                return true
+            }
+            return false
+        }
+    }
+}
+
+private final class NotesTextView: NSTextView {
+    var onTab: (() -> Void)?
+    weak var tabOrder: ComposerTabOrder?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 48 {
+            if event.modifierFlags.contains(.shift) {
+                insertBacktab(nil)
+            } else {
+                insertTab(nil)
+            }
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func insertTab(_ sender: Any?) {
+        onTab?()
+        if tabOrder?.focusDuration() != true {
+            window?.selectNextKeyView(self)
+        }
+    }
+
+    override func insertTabIgnoringFieldEditor(_ sender: Any?) {
+        insertTab(sender)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        window?.selectPreviousKeyView(self)
+    }
+}
+
+private final class NotesFieldContainer: NSView {
+    let scrollView = NSScrollView()
+    let textView = NotesTextView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.focusRingType = .none
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = textView
+
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.drawsBackground = false
+        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.textColor = .labelColor
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.focusRingType = .none
+        textView.setAccessibilityLabel("Notes")
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let width = max(0, scrollView.contentSize.width)
+        textView.minSize = NSSize(width: width, height: 0)
+        textView.frame.size.width = width
+        textView.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+    override var canBecomeKeyView: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        window?.makeFirstResponder(textView) ?? false
+    }
 }
 
 private struct DurationEntryField: NSViewRepresentable {
     @Binding var text: String
+    var tabOrder: ComposerTabOrder
     var showsInvalid: Bool
     var onSubmit: () -> Void
+    var onBacktab: () -> Void
+    var onUserEdit: () -> Void
 
     func makeNSView(context: Context) -> DurationFieldContainer {
         let container = DurationFieldContainer()
@@ -600,6 +811,7 @@ private struct DurationEntryField: NSViewRepresentable {
 
     func updateNSView(_ container: DurationFieldContainer, context: Context) {
         context.coordinator.parent = self
+        tabOrder.duration = container.field
         container.field.textColor = showsInvalid ? .systemRed : .labelColor
         if container.field.currentEditor() == nil, container.field.stringValue != text {
             container.field.stringValue = text
@@ -619,6 +831,7 @@ private struct DurationEntryField: NSViewRepresentable {
 
         func controlTextDidChange(_ obj: Notification) {
             parent.text = (obj.object as? NSTextField)?.stringValue ?? parent.text
+            parent.onUserEdit()
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -630,6 +843,11 @@ private struct DurationEntryField: NSViewRepresentable {
                     parent.text = formatted
                 }
                 parent.onSubmit()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+                parent.onBacktab()
+                parent.tabOrder.focusNotes()
                 return true
             }
             return false
@@ -664,6 +882,7 @@ private final class DurationFieldContainer: NSView {
     }
 
     override var acceptsFirstResponder: Bool { true }
+    override var canBecomeKeyView: Bool { true }
 
     override func becomeFirstResponder() -> Bool {
         window?.makeFirstResponder(field) ?? false
