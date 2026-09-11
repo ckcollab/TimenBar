@@ -96,7 +96,8 @@ struct TimerComposerView: View {
                     NotesEntryField(
                         text: $draft.note,
                         tabOrder: tabOrder,
-                        onTab: { focusedField = .duration }
+                        onTab: { focusedField = .duration },
+                        onSubmit: performPrimaryAction
                     )
                     .focused($focusedField, equals: .notes)
                     .padding(8)
@@ -568,6 +569,9 @@ struct TimerComposerView: View {
     }
 
     private func performPrimaryAction() {
+        if let notes = tabOrder.notes?.string {
+            draft.note = notes
+        }
         if let duration = TimerDurationInput.parse(durationText) {
             durationText = TimerDurationInput.format(duration)
         }
@@ -616,6 +620,9 @@ struct TimerComposerView: View {
     }
 
     private func performStopAction() {
+        if let notes = tabOrder.notes?.string {
+            draft.note = notes
+        }
         guard canAttemptSubmit else { return }
         let billableDraft = draft.enforcingBillable
         if durationWasEdited {
@@ -652,10 +659,26 @@ private final class ComposerTabOrder {
     }
 }
 
+enum ComposerNotesReturnKey {
+    enum Action: Equatable {
+        case submit
+        case insertNewline
+    }
+
+    static func action(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Action? {
+        guard keyCode == 36 || keyCode == 76 else { return nil }
+        let modifiers = modifierFlags.intersection([.shift, .command, .option, .control])
+        if modifiers == .shift { return .insertNewline }
+        if modifiers.isEmpty { return .submit }
+        return nil
+    }
+}
+
 private struct NotesEntryField: NSViewRepresentable {
     @Binding var text: String
     var tabOrder: ComposerTabOrder
     var onTab: () -> Void
+    var onSubmit: () -> Void
 
     func makeNSView(context: Context) -> NotesFieldContainer {
         let container = NotesFieldContainer()
@@ -669,6 +692,7 @@ private struct NotesEntryField: NSViewRepresentable {
         context.coordinator.parent = self
         container.textView.tabOrder = tabOrder
         container.textView.onTab = onTab
+        container.textView.onSubmit = onSubmit
         tabOrder.notes = container.textView
         if container.textView.string != text, container.window?.firstResponder !== container.textView {
             container.textView.string = text
@@ -698,6 +722,12 @@ private struct NotesEntryField: NSViewRepresentable {
                 (textView as? NotesTextView)?.insertTab(nil)
                 return true
             }
+            // Return saves the form. Shift-Return inserts a newline in keyDown
+            // via insertNewlineIgnoringFieldEditor, which we leave alone here.
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                parent.onSubmit()
+                return true
+            }
             return false
         }
     }
@@ -705,6 +735,7 @@ private struct NotesEntryField: NSViewRepresentable {
 
 private final class NotesTextView: NSTextView {
     var onTab: (() -> Void)?
+    var onSubmit: (() -> Void)?
     weak var tabOrder: ComposerTabOrder?
 
     override func keyDown(with event: NSEvent) {
@@ -715,6 +746,16 @@ private final class NotesTextView: NSTextView {
                 insertTab(nil)
             }
             return
+        }
+        switch ComposerNotesReturnKey.action(keyCode: event.keyCode, modifierFlags: event.modifierFlags) {
+        case .submit:
+            onSubmit?()
+            return
+        case .insertNewline:
+            insertNewlineIgnoringFieldEditor(nil)
+            return
+        case nil:
+            break
         }
         super.keyDown(with: event)
     }

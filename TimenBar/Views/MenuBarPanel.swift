@@ -119,6 +119,7 @@ struct MenuBarPanel: View {
                             EntryRowView(entry: entry, presentComposer: presentEntryComposer)
                                 .environment(appModel)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(entry)
                             Divider()
                         }
                     }

@@ -10,12 +10,8 @@ struct IdlePromptView: View {
         _showRemovalChoices = State(initialValue: prompt.showRemovalChoices)
     }
 
-    private var keptTimeText: String {
-        appModel.runningDisplayDuration.compactSpokenDuration
-    }
-
-    private var idlePortionText: String {
-        max(0, appModel.now.timeIntervalSince(prompt.idleStartedAt)).compactSpokenDuration
+    private var idleTimeText: String {
+        prompt.idleDuration(at: appModel.now).compactSpokenDuration
     }
 
     var body: some View {
@@ -34,7 +30,7 @@ struct IdlePromptView: View {
 
             if showRemovalChoices {
                 VStack(spacing: 10) {
-                    Button("Remove \(idlePortionText) and stop") {
+                    Button("Remove \(idleTimeText) and stop") {
                         Task { await appModel.resolveIdle(.removeIdleAndStop(idleStartedAt: prompt.idleStartedAt)) }
                     }
                     .buttonStyle(.borderedProminent)
@@ -51,11 +47,11 @@ struct IdlePromptView: View {
                     Button {
                         Task { await appModel.resolveIdle(.keepAndStop) }
                     } label: {
-                        Label("Keep \(keptTimeText) and stop", systemImage: "stop.fill")
+                        Label("Keep \(idleTimeText) and stop", systemImage: "stop.fill")
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
-                    Button("Remove \(idlePortionText)…") {
+                    Button("Remove \(idleTimeText)…") {
                         showRemovalChoices = true
                     }
                     Button {

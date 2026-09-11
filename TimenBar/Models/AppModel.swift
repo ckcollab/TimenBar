@@ -201,6 +201,18 @@ final class AppModel {
                 syncState: timer.syncState
             ))
         }
+        if let timer = runningTimer {
+            visible = visible.map { entry in
+                guard isRunningEntry(entry) else { return entry }
+                var copy = entry
+                copy.note = timer.note
+                copy.projectID = timer.projectID
+                copy.projectName = timer.projectName
+                copy.clientName = timer.clientName
+                copy.tags = timer.tags
+                return copy
+            }
+        }
         return visible.sorted(by: TimeEntry.newestCreatedFirst)
     }
 
@@ -620,8 +632,9 @@ final class AppModel {
         }
         guard validateDraftReferences(draft) else { return }
         do {
-            let logged = try await gateway.logTime(start: start, end: end, draft: draft)
+            var logged = try await gateway.logTime(start: start, end: end, draft: draft)
             guard isMutationContextCurrent(mutationAccountID) else { return }
+            logged.note = draft.note
             composerMode = nil
             lastTimerDraft = draft
             persistLastTimerDraft()
@@ -673,12 +686,13 @@ final class AppModel {
                     return nil
                 }
                 let addedDuration = max(0, desiredEnd.timeIntervalSince(timer.startedAt))
-                let updated = try await gateway.updateEntryDuration(
+                var updated = try await gateway.updateEntryDuration(
                     id: resumedEntryID,
                     draft: draft,
                     duration: original.duration + addedDuration
                 )
                 guard isMutationContextCurrent(mutationAccountID) else { return nil }
+                updated.note = draft.note
                 runningTimer = nil
                 self.resumedEntryID = nil
                 idlePrompt = nil
@@ -708,6 +722,7 @@ final class AppModel {
                 )
                 guard isMutationContextCurrent(mutationAccountID) else { return nil }
             }
+            remote.note = draft.note
             runningTimer = nil
             resumedEntryID = nil
             idlePrompt = nil
@@ -806,10 +821,17 @@ final class AppModel {
             return
         }
         do {
-            let updated = try await gateway.updateEntry(id: remoteID, draft: draft, start: start, end: end)
+            var updated = try await gateway.updateEntry(id: remoteID, draft: draft, start: start, end: end)
             guard isMutationContextCurrent(mutationAccountID) else { return }
+            // Timen’s update payload often omits or nulls note fields. Keep the
+            // notes the user just saved so the day list doesn’t stay stale.
+            updated.note = draft.note
             composerMode = nil
-            entries.removeAll { $0.id == entry.id || $0.id == updated.id }
+            entries.removeAll {
+                $0.id == entry.id
+                    || $0.id == updated.id
+                    || ($0.remoteID != nil && ($0.remoteID == entry.remoteID || $0.remoteID == updated.remoteID))
+            }
             entries.append(updated)
             if let remoteID = updated.remoteID { focus(on: remoteID) }
             try? store.upsertEntries([updated])
@@ -902,7 +924,7 @@ final class AppModel {
         // it as soon as the user clicks, which used to skip keep-and-stop.
         switch resolution {
         case .keepAndStop:
-            await stopTimer(at: .now, source: "idle-keep-and-stop")
+            await stopTimer(at: now, source: "idle-keep-and-stop")
         case let .removeIdleAndStop(idleStartedAt):
             await stopTimer(at: max(idleStartedAt, runningTimer?.startedAt ?? idleStartedAt), source: "idle-remove-and-stop")
         case .deleteEntry:
@@ -992,7 +1014,9 @@ final class AppModel {
     }
 
     private func isCurrentEntry(_ entry: TimeEntry) -> Bool {
-        entries.contains(entry)
+        entries.contains {
+            $0.id == entry.id || ($0.remoteID != nil && $0.remoteID == entry.remoteID)
+        }
     }
 
     private func isMutationContextCurrent(_ accountID: String) -> Bool {
@@ -1371,6 +1395,10 @@ struct IdlePromptState: Identifiable {
     let id = UUID()
     var idleStartedAt: Date
     var showRemovalChoices: Bool
+
+    func idleDuration(at now: Date) -> TimeInterval {
+        max(0, now.timeIntervalSince(idleStartedAt))
+    }
 }
 
 private extension IdleResolution {

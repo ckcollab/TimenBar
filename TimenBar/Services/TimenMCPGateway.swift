@@ -163,7 +163,7 @@ actor TimenMCPGateway: TimenGateway {
             projectID: projectID,
             projectName: candidate.string(keys: ["project_name"]) ?? project?.string(keys: ["name"]),
             clientName: candidate.string(keys: ["client_name"]) ?? project?.string(keys: ["client_name"]),
-            note: candidate.string(keys: ["note", "description"]) ?? draft.note,
+            note: TimenMCPResponseParser.note(from: candidate, fallback: draft.note),
             tags: TimenMCPResponseParser.embeddedTags(from: candidate.firstValue(keys: ["tags"])),
             billable: candidate.bool(keys: ["billable"]) ?? draft.billable,
             syncState: .synced
@@ -306,7 +306,7 @@ actor TimenMCPGateway: TimenGateway {
 
     private func draftSemanticArguments(_ draft: TimerDraft) -> [SemanticArgument] {
         var values: [SemanticArgument] = [
-            SemanticArgument(names: ["note", "description"], value: .string(draft.note)),
+            SemanticArgument(names: ["note", "notes", "description"], value: .string(draft.note)),
             SemanticArgument(names: ["billable", "is_billable"], value: .bool(true)),
             SemanticArgument(names: ["tag_ids", "tagIds"], value: .array(draft.tagIDs.map(Self.identifierValue))),
             SemanticArgument(
@@ -774,7 +774,7 @@ enum TimenMCPResponseParser {
                 ?? project.flatMap { nonEmptyString(in: $0, keys: ["name", "project_name"]) },
             clientName: nonEmptyString(in: candidate, keys: ["client_name"])
                 ?? project.flatMap { nonEmptyString(in: $0, keys: ["client_name"]) },
-            note: candidate.string(keys: ["note", "description"]) ?? "",
+            note: note(from: candidate),
             tags: embeddedTags(from: candidate.firstValue(keys: ["tags"])),
             billable: candidate.bool(keys: ["billable", "is_billable"]) ?? false,
             syncState: .synced
@@ -872,7 +872,7 @@ enum TimenMCPResponseParser {
                 ?? project.flatMap { nonEmptyString(in: $0, keys: ["name", "project_name"]) },
             clientName: nonEmptyString(in: value, keys: ["client_name"])
                 ?? project.flatMap { nonEmptyString(in: $0, keys: ["client_name"]) },
-            note: value.string(keys: ["note", "description"]) ?? "",
+            note: note(from: value),
             tags: embeddedTags(from: value.firstValue(keys: ["tags"])),
             billable: value.bool(keys: ["billable", "is_billable"]) ?? false,
             syncState: .synced
@@ -974,11 +974,18 @@ enum TimenMCPResponseParser {
         return nil
     }
 
+    static func note(from value: Value, fallback: String = "") -> String {
+        nonEmptyString(in: value, keys: ["note", "notes", "description"]) ?? fallback
+    }
+
     private static func nonEmptyString(in value: Value, keys: [String]) -> String? {
-        guard let raw = value.string(keys: keys)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty
-        else { return nil }
-        return raw
+        for key in keys {
+            guard let candidate = value.firstValue(keys: [key]),
+                  let parsed = nonEmptyScalarString(candidate)
+            else { continue }
+            return parsed
+        }
+        return nil
     }
 
     private static func nonEmptyScalarString(_ value: Value) -> String? {

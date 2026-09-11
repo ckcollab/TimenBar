@@ -265,6 +265,33 @@ final class TimenMCPGatewayTests: XCTestCase {
         XCTAssertEqual(entry.duration, 5_400, accuracy: 0.01)
     }
 
+    func testEntryNotePrefersDescriptionWhenNoteIsEmptyOrNull() throws {
+        let emptyNote = try fixture(
+            #"{"id":"100","start":"2026-08-20T16:00:00Z","end":"2026-08-20T17:00:00Z","note":"","description":"Updated notes"}"#
+        )
+        let nullNote = try fixture(
+            #"{"id":"100","start":"2026-08-20T16:00:00Z","end":"2026-08-20T17:00:00Z","note":null,"description":"Updated notes"}"#
+        )
+        let notesField = try fixture(
+            #"{"id":"100","start":"2026-08-20T16:00:00Z","end":"2026-08-20T17:00:00Z","notes":"Updated notes"}"#
+        )
+
+        XCTAssertEqual(try TimenMCPResponseParser.entry(from: emptyNote).note, "Updated notes")
+        XCTAssertEqual(try TimenMCPResponseParser.entry(from: nullNote).note, "Updated notes")
+        XCTAssertEqual(try TimenMCPResponseParser.entry(from: notesField).note, "Updated notes")
+    }
+
+    func testSchemaAwareArgumentsEmitNotesWhenThatIsTheAdvertisedField() {
+        let schema = inputSchema(properties: ["notes", "project_id"])
+        let arguments = TimenMCPArgumentBuilder.arguments(schema: schema, values: [
+            SemanticArgument(names: ["note", "notes", "description"], value: .string("Updated notes")),
+        ])
+
+        XCTAssertEqual(arguments["notes"], .string("Updated notes"))
+        XCTAssertNil(arguments["note"])
+        XCTAssertNil(arguments["description"])
+    }
+
     func testOwnerAndAdminEntryQueriesEmitRecognizedSelfFilter() {
         let schema = inputSchema(properties: ["member_id"])
 

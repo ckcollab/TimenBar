@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import SwiftData
 import XCTest
@@ -21,6 +22,15 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertEqual(TimeInterval(71 * 60).compactSpokenDuration, "1hr 11m")
         XCTAssertEqual(TimeInterval(3_600).compactSpokenDuration, "1hr")
         XCTAssertEqual(TimeInterval(0).compactSpokenDuration, "0m")
+    }
+
+    func testNotesReturnKeySavesUnlessShiftIsHeld() {
+        XCTAssertEqual(ComposerNotesReturnKey.action(keyCode: 36, modifierFlags: []), .submit)
+        XCTAssertEqual(ComposerNotesReturnKey.action(keyCode: 76, modifierFlags: .numericPad), .submit)
+        XCTAssertEqual(ComposerNotesReturnKey.action(keyCode: 36, modifierFlags: .shift), .insertNewline)
+        XCTAssertEqual(ComposerNotesReturnKey.action(keyCode: 76, modifierFlags: [.shift, .numericPad]), .insertNewline)
+        XCTAssertNil(ComposerNotesReturnKey.action(keyCode: 36, modifierFlags: [.shift, .command]))
+        XCTAssertNil(ComposerNotesReturnKey.action(keyCode: 48, modifierFlags: []))
     }
 
     func testInternetFailureDetection() {
@@ -1273,6 +1283,71 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "Time entries cannot end in the future.")
     }
 
+    func testEditingAnEntryNoteUpdatesTheVisibleDayListEvenIfTimenOmitsIt() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let existing = entry(id: "entry", project: project, note: "Old notes")
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [existing]
+        )
+        await gateway.setOmitsNoteInUpdateResponse(true)
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        model.presentEdit(existing)
+        await model.updateEntry(
+            existing,
+            draft: TimerDraft(projectID: project.id, tagIDs: [], note: "New notes", billable: true),
+            start: existing.start,
+            end: existing.end
+        )
+
+        XCTAssertEqual(model.selectedDayEntries.map(\.note), ["New notes"])
+        XCTAssertNil(model.composerMode)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testSavingRunningContinuationNotesUpdatesTheVisibleDayList() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-3_600)
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(1_800),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Old notes", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        model.presentRunningTimer()
+        XCTAssertTrue(
+            model.updateRunningTimer(
+                TimerDraft(projectID: project.id, tagIDs: [], note: "New notes", billable: true)
+            )
+        )
+
+        let visible = try XCTUnwrap(model.selectedDayEntries.first { $0.remoteID == "entry" })
+        XCTAssertEqual(visible.note, "New notes")
+        XCTAssertNil(model.composerMode)
+    }
+
     func testCrossMidnightManualTimeRevealsItsPreviousStartDayAndWeek() async throws {
         let container = try makeContainer()
         let activeAccount = account(id: "account")
@@ -1416,6 +1491,90 @@ final class AppModelAccountIsolationTests: XCTestCase {
         XCTAssertNil(model.runningTimer)
         XCTAssertTrue(model.entries.isEmpty)
         XCTAssertNil(model.errorMessage)
+    }
+
+    func testIdlePromptLabelsUseIdleTimeNotTheCompleteRunningDuration() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let prompt = IdlePromptState(
+            idleStartedAt: now.addingTimeInterval(-11 * 60),
+            showRemovalChoices: false
+        )
+
+        XCTAssertEqual(prompt.idleDuration(at: now), 11 * 60, accuracy: 0.01)
+        XCTAssertEqual(prompt.idleDuration(at: now).compactSpokenDuration, "11m")
+        XCTAssertNotEqual(TimeInterval(71 * 60).compactSpokenDuration, "11m")
+    }
+
+    func testIdleKeepAndStopKeepsTheIdlePortionOnAContinuation() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-7_200)
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(3_600),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Continued work", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        let continuationStart = try XCTUnwrap(model.runningTimer?.startedAt)
+        let idleStartedAt = continuationStart.addingTimeInterval(600)
+        model.now = continuationStart.addingTimeInterval(1_260)
+        model.idlePrompt = IdlePromptState(idleStartedAt: idleStartedAt, showRemovalChoices: false)
+
+        await model.resolveIdle(.keepAndStop)
+
+        let recordedDuration = await gateway.lastDurationUpdate()
+        XCTAssertEqual(try XCTUnwrap(recordedDuration), 4_860, accuracy: 0.01)
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.idlePrompt)
+    }
+
+    func testIdleRemoveAndStopDropsOnlyTheIdlePortionOnAContinuation() async throws {
+        let container = try makeContainer()
+        let activeAccount = account(id: "account")
+        let project = TimenProject(id: "project", name: "Project", clientName: "Client")
+        let originalStart = Date.now.addingTimeInterval(-7_200)
+        let original = TimeEntry(
+            id: "entry", remoteID: "entry", start: originalStart,
+            end: originalStart.addingTimeInterval(3_600),
+            projectID: project.id, projectName: project.name, clientName: project.clientName,
+            note: "Continued work", tags: [], billable: true, syncState: .synced
+        )
+        let gateway = AccountLifecycleGateway(
+            account: activeAccount,
+            projects: [project],
+            tags: [],
+            entries: [original]
+        )
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let model = makeModel(container: container, gateway: gateway, defaults: defaults)
+
+        await model.signIn()
+        await model.restartEntry(original)
+        let continuationStart = try XCTUnwrap(model.runningTimer?.startedAt)
+        let idleStartedAt = continuationStart.addingTimeInterval(600)
+        model.now = continuationStart.addingTimeInterval(1_260)
+        model.idlePrompt = IdlePromptState(idleStartedAt: idleStartedAt, showRemovalChoices: true)
+
+        await model.resolveIdle(.removeIdleAndStop(idleStartedAt: idleStartedAt))
+
+        let recordedDuration = await gateway.lastDurationUpdate()
+        XCTAssertEqual(try XCTUnwrap(recordedDuration), 4_200, accuracy: 0.01)
+        XCTAssertNil(model.runningTimer)
+        XCTAssertNil(model.idlePrompt)
     }
 
     func testIdleKeepAndStopStopsTheRunningTimerEvenIfThePromptWasDismissed() async throws {
@@ -1885,6 +2044,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     private var startCalls = 0
     private var logTimeCalls: [LogTimeCall] = []
     private var durationUpdates: [TimeInterval] = []
+    private var omitNoteInUpdateResponse = false
     private var deletedIDs: [String] = []
     private let firstAuthenticationWaitsForCancellation: Bool
     private var authenticationRequests = 0
@@ -1932,6 +2092,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     func setProjects(_ projects: [TimenProject]) { projectValues = projects }
     func setProjectsUnavailable(_ unavailable: Bool) { failProjects = unavailable }
     func setStopError(_ error: Error?) { stopError = error }
+    func setOmitsNoteInUpdateResponse(_ omit: Bool) { omitNoteInUpdateResponse = omit }
     func isAuthenticated() async -> Bool { true }
     func authenticate() async throws {
         authenticationRequests += 1
@@ -2012,12 +2173,24 @@ private actor AccountLifecycleGateway: TimenGateway {
         )
     }
     func updateEntry(
-        id _: String,
-        draft _: TimerDraft,
-        start _: Date?,
-        end _: Date?
+        id: String,
+        draft: TimerDraft,
+        start: Date?,
+        end: Date?
     ) async throws -> TimeEntry {
-        throw AccountLifecycleGatewayError.unsupportedMutation
+        guard var entry = entryValues.first(where: { $0.remoteID == id || $0.id == id }) else {
+            throw AccountLifecycleGatewayError.unsupportedMutation
+        }
+        let project = projectValues.first { $0.id == draft.projectID }
+        entry.projectID = project?.id
+        entry.projectName = project?.name
+        entry.clientName = project?.clientName
+        entry.note = omitNoteInUpdateResponse ? "" : draft.note
+        entry.tags = tagValues.filter { draft.tagIDs.contains($0.id) }
+        entry.billable = draft.billable
+        if let start { entry.start = start }
+        if let end { entry.end = end }
+        return entry
     }
     func updateEntryDuration(id: String, draft: TimerDraft, duration: TimeInterval) async throws -> TimeEntry {
         guard var entry = entryValues.first(where: { $0.remoteID == id }) else {
