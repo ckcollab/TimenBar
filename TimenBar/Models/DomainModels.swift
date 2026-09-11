@@ -240,7 +240,7 @@ enum IdleResolution: Sendable {
 }
 
 enum TimenBarError: LocalizedError, Sendable {
-    static let unsavedMutationMessage = "Unable to update times."
+    static let unsavedMutationMessage = "No internet connection. TimenBar can’t start or stop timers until you’re back online."
 
     case notAuthenticated
     case incompatibleServer(missingTools: [String])

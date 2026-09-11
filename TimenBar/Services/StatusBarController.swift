@@ -127,6 +127,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             appModel.connectivity.isOnline &&
             (appModel.runningTimer != nil || appModel.quickStartEntry != nil)
         guard canAct else {
+            if appModel.authenticationState == .signedIn,
+               appModel.connectivity.isUnreachable,
+               appModel.runningTimer != nil || appModel.quickStartEntry != nil
+            {
+                Task { await appModel.quickToggleTimer(source: "status-bar-play-pause") }
+            }
             showPanel()
             return
         }
@@ -417,6 +423,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             _ = appModel?.quickStartEntry?.id
             _ = appModel?.authenticationState
             _ = appModel?.connectivity.isOnline
+            _ = appModel?.connectivity.lastReachabilityFailed
             _ = appModel?.timenTheme
         } onChange: { [weak self] in
             Task { @MainActor in
@@ -456,14 +463,21 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         guard let appModel else { return }
         let isRunning = appModel.runningTimer != nil
         let isConnected = appModel.authenticationState == .signedIn
-        let actionColor = isRunning
-            ? appModel.timenTheme.appKitAccent
-            : NSColor(srgbRed: 0.34, green: 0.34, blue: 0.37, alpha: 0.96)
+        let isUnreachable = appModel.connectivity.isUnreachable
+        let actionColor: NSColor
+        if isUnreachable {
+            actionColor = NSColor(srgbRed: 0.75, green: 0.28, blue: 0.22, alpha: 0.96)
+        } else if isRunning {
+            actionColor = appModel.timenTheme.appKitAccent
+        } else {
+            actionColor = NSColor(srgbRed: 0.34, green: 0.34, blue: 0.37, alpha: 0.96)
+        }
         let durationColor = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 0.96)
 
         let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
-        let image = NSImage(systemSymbolName: isRunning ? "pause.fill" : "play.fill", accessibilityDescription: nil)?
+        let actionSymbol = isUnreachable ? "bolt.slash.fill" : (isRunning ? "pause.fill" : "play.fill")
+        let image = NSImage(systemSymbolName: actionSymbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(symbolConfiguration)
         image?.isTemplate = false
         actionButton.image = image
@@ -471,10 +485,14 @@ final class StatusBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         actionButton.segmentColor = .clear
         actionButton.toolTip = !isConnected
             ? "Open TimenBar to connect Timen"
-            : (!appModel.connectivity.isOnline ? TimenBarError.unsavedMutationMessage
+            : (isUnreachable ? TimenBarError.unsavedMutationMessage
             : (isRunning ? "Stop the current timer" : "Start the most recent timer")
               )
-        actionButton.setAccessibilityLabel(isRunning ? "Stop current timer" : "Start current timer")
+        actionButton.setAccessibilityLabel(
+            isUnreachable
+                ? "No internet connection"
+                : (isRunning ? "Stop current timer" : "Start current timer")
+        )
 
         let durationFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         durationButton.title = ""

@@ -423,6 +423,7 @@ final class AppModel {
         self.entries = values.3
         rememberMostRecentTimer(from: values.3)
         configureIdleMonitor()
+        connectivity.noteReachabilitySuccess()
     }
 
     func selectDay(_ date: Date) {
@@ -588,6 +589,7 @@ final class AppModel {
                 draft: draft, remoteTimerID: remote.remoteID
             ))
             configureIdleMonitor()
+            connectivity.noteReachabilitySuccess()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             reportUnsavedMutation(error)
@@ -629,6 +631,7 @@ final class AppModel {
             if let remoteID = logged.remoteID { focus(on: remoteID) }
             try? store.upsertEntries([logged])
             revealLoggedEntryIfNeeded(logged, source: source)
+            connectivity.noteReachabilitySuccess()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             reportUnsavedMutation(error)
@@ -686,10 +689,11 @@ final class AppModel {
                 if let updatedID = updated.remoteID { focus(on: updatedID) }
                 try? store.deleteEntry(id: original.id)
                 try? store.upsertEntries([updated])
-                dismissRunningComposerIfNeeded()
-                return updated
-            }
-            var remote = try await gateway.stopTimer()
+            dismissRunningComposerIfNeeded()
+            connectivity.noteReachabilitySuccess()
+            return updated
+        }
+        var remote = try await gateway.stopTimer()
             guard isMutationContextCurrent(mutationAccountID) else { return nil }
             let timingChanged = abs(desiredEnd.timeIntervalSince(.now)) > 2
             let metadataChanged = remote.projectID != draft.projectID ||
@@ -715,6 +719,7 @@ final class AppModel {
             try? store.deleteEntry(id: timer.id)
             try? store.upsertEntries([remote])
             dismissRunningComposerIfNeeded()
+            connectivity.noteReachabilitySuccess()
             return remote
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return nil }
@@ -766,6 +771,7 @@ final class AppModel {
         try? store.updateActiveSegment(draft: draft, startedAt: duration == nil ? nil : startedAt)
         if duration != nil { configureIdleMonitor() }
         composerMode = nil
+        connectivity.noteReachabilitySuccess()
         return true
     }
 
@@ -807,6 +813,7 @@ final class AppModel {
             entries.append(updated)
             if let remoteID = updated.remoteID { focus(on: remoteID) }
             try? store.upsertEntries([updated])
+            connectivity.noteReachabilitySuccess()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             reportUnsavedMutation(error)
@@ -838,6 +845,7 @@ final class AppModel {
                 defaults.removeObject(forKey: DefaultsKey.focusedEntrySnapshot)
             }
             try? store.deleteEntry(id: entry.id)
+            connectivity.noteReachabilitySuccess()
         } catch {
             guard isMutationContextCurrent(mutationAccountID) else { return }
             reportUnsavedMutation(error)
@@ -992,15 +1000,16 @@ final class AppModel {
     }
 
     private func reportUnsavedMutation(_ error: Error? = nil) {
-        if let error, connectivity.isOnline {
-            if case TimenBarError.networkUnavailable = error {
-                errorMessage = TimenBarError.unsavedMutationMessage
-                return
-            }
-            if (error as NSError).domain == NSURLErrorDomain {
-                errorMessage = TimenBarError.unsavedMutationMessage
-                return
-            }
+        if let error, ConnectivityMonitor.isInternetFailure(error) {
+            connectivity.noteReachabilityFailure()
+            errorMessage = TimenBarError.unsavedMutationMessage
+            return
+        }
+        if !connectivity.isOnline {
+            errorMessage = TimenBarError.unsavedMutationMessage
+            return
+        }
+        if let error {
             errorMessage = error.localizedDescription
             return
         }

@@ -23,6 +23,14 @@ final class CoreBehaviorTests: XCTestCase {
         XCTAssertEqual(TimeInterval(0).compactSpokenDuration, "0m")
     }
 
+    func testInternetFailureDetection() {
+        XCTAssertTrue(ConnectivityMonitor.isInternetFailure(URLError(.notConnectedToInternet)))
+        XCTAssertTrue(ConnectivityMonitor.isInternetFailure(URLError(.timedOut)))
+        XCTAssertTrue(ConnectivityMonitor.isInternetFailure(TimenBarError.networkUnavailable))
+        XCTAssertFalse(ConnectivityMonitor.isInternetFailure(TimenBarError.notAuthenticated))
+        XCTAssertFalse(ConnectivityMonitor.isInternetFailure(URLError(.badServerResponse)))
+    }
+
     func testManualEntryEndsAtCurrentClockTimeOnSelectedDate() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
@@ -504,6 +512,36 @@ final class AppModelAccountIsolationTests: XCTestCase {
         let logTimeCalls = await gateway.logTimeCallCount()
         XCTAssertEqual(logTimeCalls, 0)
         XCTAssertTrue(model.entries.isEmpty)
+    }
+
+    func testNetworkErrorWhileStoppingMarksUnreachableAndExplainsOffline() async throws {
+        let defaults = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+        let gateway = AccountLifecycleGateway(
+            account: account(id: "account"),
+            projects: [],
+            tags: [],
+            entries: []
+        )
+        let connectivity = ConnectivityMonitor(initiallyOnline: true, startMonitoring: false)
+        let model = makeModel(
+            container: try makeContainer(),
+            gateway: gateway,
+            defaults: defaults,
+            connectivity: connectivity
+        )
+
+        await model.signIn()
+        await model.startTimer(.empty)
+        XCTAssertNotNil(model.runningTimer)
+        XCTAssertFalse(connectivity.isUnreachable)
+
+        await gateway.setStopError(URLError(.notConnectedToInternet))
+        await model.stopTimer(source: "status-bar")
+
+        XCTAssertNotNil(model.runningTimer)
+        XCTAssertTrue(connectivity.isUnreachable)
+        XCTAssertEqual(model.errorMessage, TimenBarError.unsavedMutationMessage)
     }
 
     func testStatusBarShowsTodaysLastTimerDuration() throws {
@@ -1858,6 +1896,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     private var signOutRequests = 0
     private var credentialsStored = false
     private var authenticationEvents: [String] = []
+    private var stopError: Error?
 
     init(
         account: TimenAccount,
@@ -1892,6 +1931,7 @@ private actor AccountLifecycleGateway: TimenGateway {
     func authenticationEventsSnapshot() -> [String] { authenticationEvents }
     func setProjects(_ projects: [TimenProject]) { projectValues = projects }
     func setProjectsUnavailable(_ unavailable: Bool) { failProjects = unavailable }
+    func setStopError(_ error: Error?) { stopError = error }
     func isAuthenticated() async -> Bool { true }
     func authenticate() async throws {
         authenticationRequests += 1
@@ -1938,6 +1978,7 @@ private actor AccountLifecycleGateway: TimenGateway {
         )
     }
     func stopTimer() async throws -> TimeEntry {
+        if let stopError { throw stopError }
         let end = Date.now
         return TimeEntry(
             id: "stopped-entry",

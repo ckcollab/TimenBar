@@ -93,8 +93,8 @@ struct MenuBarPanel: View {
                 accent: appModel.timenTheme.accent
             )
 
-            if !appModel.connectivity.isOnline {
-                Label("OFFLINE: Unable to update times", systemImage: "wifi.slash")
+            if appModel.connectivity.isUnreachable {
+                Label("No internet connection", systemImage: "bolt.slash.fill")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,7 +143,7 @@ struct MenuBarPanel: View {
                 }
             }
             .disabled(appModel.authenticationState != .signedIn || !appModel.connectivity.isOnline)
-            .help(appModel.connectivity.isOnline ? "Start a timer" : TimenBarError.unsavedMutationMessage)
+            .help(appModel.connectivity.isUnreachable ? TimenBarError.unsavedMutationMessage : "Start a timer")
 
             Spacer()
 

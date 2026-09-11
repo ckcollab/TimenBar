@@ -124,8 +124,8 @@ struct TimerComposerView: View {
                     durationText = TimerDurationInput.format(appModel.runningDisplayDuration)
                 }
 
-                if !appModel.connectivity.isOnline {
-                    Label(TimenBarError.unsavedMutationMessage, systemImage: "wifi.slash")
+                if appModel.connectivity.isUnreachable {
+                    Label(TimenBarError.unsavedMutationMessage, systemImage: "bolt.slash.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
