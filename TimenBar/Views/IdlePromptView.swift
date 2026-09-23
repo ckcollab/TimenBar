@@ -30,38 +30,57 @@ struct IdlePromptView: View {
 
             if showRemovalChoices {
                 VStack(spacing: 10) {
-                    Button("Remove \(idleTimeText) and stop") {
+                    Button {
                         Task { await appModel.resolveIdle(.removeIdleAndStop(idleStartedAt: prompt.idleStartedAt)) }
+                    } label: {
+                        Text("Remove \(idleTimeText) and stop")
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(appModel.timenTheme.accent)
-                    Button("Delete the entire entry", role: .destructive) {
+                    Button(role: .destructive) {
                         Task { await appModel.resolveIdle(.deleteEntry) }
+                    } label: {
+                        Text("Delete the entire entry")
+                            .frame(maxWidth: .infinity)
                     }
-                    Button("Back") {
+                    .buttonStyle(.bordered)
+                    Button {
                         showRemovalChoices = false
+                    } label: {
+                        Text("Back")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.bordered)
                 }
+                .frame(width: 240)
             } else {
                 VStack(spacing: 10) {
                     Button {
                         Task { await appModel.resolveIdle(.keepAndStop) }
                     } label: {
                         Label("Keep \(idleTimeText) and stop", systemImage: "stop.fill")
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
-                    Button("Remove \(idleTimeText)…") {
+                    Button {
                         showRemovalChoices = true
+                    } label: {
+                        Text("Remove \(idleTimeText)…")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.bordered)
                     Button {
                         Task { await appModel.resolveIdle(.continueWorking) }
                     } label: {
                         Label("Continue working", systemImage: "play.fill")
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .tint(.green)
                 }
+                .frame(width: 240)
             }
         }
         .padding(28)
